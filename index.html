@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-<title>BTC 15 min, yes or no</title>
+<title>BTC up or down</title>
 <style>
   * { box-sizing: border-box; }
   body { font-family: system-ui, -apple-system, sans-serif; background: #f9fafb; margin: 0; padding: 16px; color: #111827; }
@@ -13,6 +13,7 @@
   .status { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
   .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
   .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+  .vcard { border-width: 2px; }
   .label { font-size: 12px; color: #6b7280; margin-bottom: 6px; font-weight: 600; letter-spacing: .3px; }
   .answer { text-align: center; padding: 24px 16px; border-width: 2px; border-style: solid; border-color: #e5e7eb; }
   .word { font-size: 64px; font-weight: 800; line-height: 1; color: #9ca3af; }
@@ -21,6 +22,7 @@
   .safety { font-size: 13px; margin-top: 10px; font-weight: 600; line-height: 1.4; }
   .alarmbar { display: none; background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; font-weight: 700; font-size: 13px; border-radius: 10px; padding: 8px 10px; margin-bottom: 10px; }
   .disp { font-size: 22px; font-weight: 800; line-height: 1.15; }
+  .verdict { font-size: 30px; font-weight: 800; line-height: 1.1; }
   .dispsm { font-size: 18px; font-weight: 800; line-height: 1.15; }
   .reason { font-size: 13px; color: #374151; margin-top: 6px; line-height: 1.5; }
   .stat { font-size: 13px; color: #374151; margin-top: 8px; line-height: 1.6; white-space: pre-line; }
@@ -49,6 +51,12 @@
     <span class="status" id="status"><span class="dot" id="dot"></span><span id="statusText">connecting</span></span>
   </div>
 
+  <div class="card vcard" id="verdictCard">
+    <div class="label">CLAUDE'S CALL (15 min)</div>
+    <div class="verdict" id="verdictText" style="color:#9ca3af;">warming up</div>
+    <div class="reason" id="verdictWhy">Gathering price and market data.</div>
+  </div>
+
   <div class="card answer" id="answerCard">
     <div class="label" id="answerLabel">15 MIN LIVE READ (price vs target)</div>
     <div class="word" id="answerWord">&mdash;</div>
@@ -58,7 +66,7 @@
   </div>
 
   <div class="card">
-    <div class="label">15 MIN DECISION READ</div>
+    <div class="label">15 MIN DECISION READ (trade view)</div>
     <div class="alarmbar" id="pumpBar"></div>
     <div class="alarmbar" id="divBar"></div>
     <div class="disp" id="dispText" style="color:#9ca3af;">warming up</div>
@@ -66,8 +74,8 @@
     <div class="stat" id="dispStats"></div>
   </div>
 
-  <div class="card">
-    <div class="label">NEXT HOUR READ (Kalshi hourly)</div>
+  <div class="card vcard" id="hrCard">
+    <div class="label">NEXT HOUR CALL (projection to the top of the hour)</div>
     <div class="dispsm" id="hrDisp" style="color:#9ca3af;">loading</div>
     <div class="reason" id="hrReason"></div>
     <div class="stat" id="hrStats"></div>
@@ -119,7 +127,7 @@
   </div>
 
   <div class="caveat">
-    The reads assume direction can't be predicted, then check price for value, cushion for pull safety, and the exchanges for a single venue push. Most rounds the honest answer is sit it out, and pumps or divergence get a hard stand down. The hourly settles on a slightly different reference, so the blended price is an even looser stand in there, and an hour out it is close to a coin toss until near the close. Price is blended across Coinbase, Kraken and Bitstamp. This is information, not trading advice, and these moves are close to random, so only risk what you can lose.
+    Claude's call gives a straight yes or no only when the outcome is effectively locked, otherwise a best guess tagged sit out, because a lean is not an edge. The projection centers on the current price with a band that tightens toward the close. Effectively locked means practically impossible, not literally. Price is blended across Coinbase, Kraken and Bitstamp. This is information, not trading advice, and these moves are close to random, so only risk what you can lose.
   </div>
 
 </div>
@@ -130,6 +138,7 @@
   var BASE = "https://api.elections.kalshi.com/trade-api/v2/markets?status=open&limit=50&series_ticker=";
   var URL_15M = BASE + "KXBTC15M", URL_HR = BASE + "KXBTCD";
   var Q = 15 * 60 * 1000, FRESH = 5000, HOLD = 15000, DIV_FLOOR = 20, DIV_MULT = 3;
+  var Z_LOCK = 3, Z_ALMOST = 2.3;
 
   var feeds = { coinbase: { p: null, t: 0 }, kraken: { p: null, t: 0 }, bitstamp: { p: null, t: 0 } };
   var manualPriceMode = false, promptedManual = false;
@@ -204,7 +213,6 @@
 
   function drawChart() { if (Date.now() - lastChartDraw < 220) return; lastChartDraw = Date.now(); var c = el("chart"); if (!c) return; var dpr = window.devicePixelRatio || 1; var w = c.clientWidth, h = c.clientHeight; if (!w) return; var rw = Math.round(w * dpr), rh = Math.round(h * dpr); if (c.width !== rw || c.height !== rh) { c.width = rw; c.height = rh; } var ctx = c.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h); var now = Date.now(), span = 180000; var pts = samples.filter(function (s) { return s.t >= now - span; }); var tgt = effTarget(); var vals = pts.map(function (s) { return s.p; }); if (tgt != null && !isNaN(tgt)) vals.push(tgt); if (vals.length < 2) { ctx.fillStyle = GREY; ctx.font = "13px system-ui"; ctx.fillText("gathering price...", 10, h / 2); return; } var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals); if (min === max) { min -= 10; max += 10; } var pad = (max - min) * 0.14; min -= pad; max += pad; function X(t) { return ((t - (now - span)) / span) * w; } function Y(p) { return h - ((p - min) / (max - min)) * h; } var last = pts[pts.length - 1]; var above = tgt == null || isNaN(tgt) ? true : last.p >= tgt; if (tgt != null && !isNaN(tgt)) { ctx.strokeStyle = AMBER; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(0, Y(tgt)); ctx.lineTo(w, Y(tgt)); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = AMBER; ctx.font = "11px system-ui"; ctx.fillText("target " + fmt(tgt, 0), 4, Math.max(11, Y(tgt) - 4)); } ctx.strokeStyle = above ? YES : NO; ctx.lineWidth = 2; ctx.beginPath(); pts.forEach(function (s, i) { var x = X(s.t), y = Y(s.p); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }); ctx.stroke(); ctx.fillStyle = above ? YES : NO; ctx.beginPath(); ctx.arc(X(last.t), Y(last.p), 3, 0, 7); ctx.fill(); ctx.font = "12px system-ui"; ctx.fillText("$" + fmt(last.p, 0), Math.min(w - 64, X(last.t) + 6), Math.max(12, Y(last.p) - 6)); }
 
-  // shared disposition for a market read
   function disposition(pUp, yesAsk, noAsk, secsLeft) {
     if (pUp == null || yesAsk == null || noAsk == null) return null;
     var evUp = pUp * 100 - yesAsk - feeCents(yesAsk / 100);
@@ -214,6 +222,16 @@
     if (best.ev >= 5) { disp = best.s === "Up" ? "Possible value: Up (Yes)" : "Possible value: Down (No)"; color = best.s === "Up" ? YES : NO; reason = "Model sees " + (best.s === "Up" ? "Up (Yes)" : "Down (No)") + " a touch cheap, edge about +" + Math.round(best.ev) + "c. Edges like this are often just noise, size small and don't chase."; }
     else { disp = "Sit it out"; color = AMBER; if (pUp > 0.9) reason = "Almost locked Up, but it pays almost nothing from here."; else if (pUp < 0.1) reason = "Almost locked Down, but it pays almost nothing from here."; else if (pUp > 0.43 && pUp < 0.57 && (secsLeft === null || secsLeft > 120)) reason = "Near a coin toss with time on the clock. Nothing solid to lean on."; else reason = "Price is fair, no edge worth the fee."; }
     return { disp: disp, color: color, reason: reason, evUp: evUp, evDown: evDown };
+  }
+
+  // Claude's verdict: sure yes/no only when locked, else best guess (sit out), else coin toss / unstable
+  function verdictOf(pUp, lockZ, blocked) {
+    if (blocked) return { t: "Sit out, too unstable", c: AMBER };
+    if (pUp == null || lockZ == null) return { t: "warming up", c: GREY };
+    if (lockZ >= Z_LOCK) return (pUp >= 0.5) ? { t: "YES", c: YES } : { t: "NO", c: NO };
+    if (pUp >= 0.55) return { t: "Best guess Yes (sit out)", c: AMBER };
+    if (pUp <= 0.45) return { t: "Best guess No (sit out)", c: AMBER };
+    return { t: "Coin toss (sit out)", c: GREY };
   }
 
   function render() {
@@ -265,10 +283,18 @@
     var sdProb = (sig120 != null && tau != null) ? sig120 * Math.sqrt(tau) : null;
     var pUp = (sdProb != null && sdProb > 0 && haveTarget && price != null) ? normCdf((price - tgt) / sdProb) : null;
     var sigHorizon = Math.max(sig120 || 0, sig30 || 0) || null;
+    var sdNow = sigHorizon != null && secsLeft != null ? sigHorizon * Math.sqrt(Math.max(secsLeft, 1)) : null;
     var safeCushion = (sigHorizon != null && tau != null) ? 2 * sigHorizon * Math.sqrt(tau) : null;
     var actualCushion = (haveTarget && price != null) ? Math.abs(price - tgt) : null;
 
-    // 15 min answer
+    // unified lockZ for the 15 min
+    var lockZ = null;
+    if (haveTarget && price != null && secsLeft != null) {
+      if (inFinal && windowCount > 0 && r > 0) { var thR = (60 * tgt - Ssum) / r; var mv = (judge >= tgt) ? (price - thR) : (thR - price); var em = sigHorizon != null ? sigHorizon * Math.sqrt(Math.max(secsLeft, 1)) : null; lockZ = (em && em > 0) ? Math.abs(mv) / em : 99; }
+      else if (sdNow != null && sdNow > 0) { lockZ = Math.abs(price - tgt) / sdNow; }
+    }
+
+    // 15 min answer + dynamic lock
     var card = el("answerCard"), word = el("answerWord"), gap = el("answerGap"), jl = el("answerJudge"), safe = el("answerSafety");
     el("answerLabel").textContent = inFinal ? "15 MIN SETTLEMENT (final minute average)" : "15 MIN LIVE READ (price vs target)";
     if (haveTarget && validJudge) {
@@ -277,13 +303,24 @@
       gap.textContent = (diff >= 0 ? "Above" : "Below") + " the price to beat by $" + fmt(Math.abs(diff));
       jl.textContent = "Judging on $" + fmt(judge) + (inFinal ? (" (avg of " + windowCount + " of 60 secs)") : " (live price)") + (held ? ", price catching up" : "");
       if (secsLeft === null) safe.textContent = "";
-      else if (!inFinal) { safe.style.color = GREY; safe.textContent = "Not locked yet, " + mmss(secsLeft) + " to close. BTC can still swing past this, the lock begins in the final minute."; }
-      else if (r <= 0) { safe.style.color = isYes ? YES : NO; safe.textContent = "Locked and settled. Final average is " + (isYes ? "above" : "below") + " the target."; }
-      else if (price !== null) { var threshRemain = (60 * tgt - Ssum) / r; var move = isYes ? (price - threshRemain) : (threshRemain - price); var dir = isYes ? "fall" : "rise"; var expMove = sigHorizon != null ? sigHorizon * Math.sqrt(Math.max(secsLeft, 1)) : null; var safeFromPull = expMove != null ? Math.abs(move) >= 2.5 * expMove : Math.abs(move) >= 75; safe.style.color = safeFromPull ? YES : NO; safe.textContent = "Locking, " + windowCount + " of 60s in, " + secsLeft + "s left. To flip, BTC must " + dir + " about $" + fmt(Math.abs(move), 0) + " and hold. " + (safeFromPull ? "A pull can't realistically do that." : "Thin, a pull could flip this."); }
-      else safe.textContent = "";
+      else if (inFinal && r <= 0) { safe.style.color = isYes ? YES : NO; safe.textContent = "Locked and settled. Final average is " + (isYes ? "above" : "below") + " the target."; }
+      else if (inFinal && windowCount > 0 && price !== null) { var threshRemain = (60 * tgt - Ssum) / r; var move = isYes ? (price - threshRemain) : (threshRemain - price); var dir = isYes ? "fall" : "rise"; var lead = "Locking, " + windowCount + " of 60s in, " + secsLeft + "s left. To flip, BTC must " + dir + " about $" + fmt(Math.abs(move), 0) + " and hold. "; if (lockZ >= Z_LOCK) { safe.style.color = YES; lead += "Locked, practically impossible, a pull can't reach it."; } else if (lockZ >= Z_ALMOST) { safe.style.color = YES; lead += "Very unlikely to flip now."; } else { safe.style.color = NO; lead += "Thin, a pull could flip this."; } safe.textContent = lead; }
+      else if (price !== null && sdNow != null && sdNow > 0) { var cushion = Math.abs(price - tgt); var flipP = normCdf(-lockZ); var dir2 = isYes ? "fall" : "rise"; if (lockZ >= Z_LOCK) { safe.style.color = YES; safe.textContent = "Effectively locked with " + mmss(secsLeft) + " left. BTC would need to " + dir2 + " about $" + fmt(cushion, 0) + " and hold, a " + lockZ.toFixed(1) + " sigma move. Practically impossible, beyond a pull too."; } else if (lockZ >= Z_ALMOST) { safe.style.color = YES; safe.textContent = "Almost locked, " + mmss(secsLeft) + " left. A $" + fmt(cushion, 0) + " move against you flips it, odds about " + pctTxt(flipP) + "."; } else { safe.style.color = GREY; safe.textContent = "Not locked, " + mmss(secsLeft) + " left. A $" + fmt(cushion, 0) + " move flips it, within range for the time left. The lock firms up as the clock runs down."; } }
+      else safe.textContent = "Not locked yet, " + mmss(secsLeft) + " to close.";
     } else { word.textContent = "\u2014"; word.style.color = GREY; card.style.borderColor = "#e5e7eb"; card.style.background = "#fff"; gap.textContent = ""; jl.textContent = !haveTarget ? "waiting for the first target read" : "waiting for a price"; safe.textContent = ""; }
 
-    // 15 min decision read
+    // Claude's call (15 min verdict)
+    var vT = el("verdictText"), vW = el("verdictWhy"), vC = el("verdictCard");
+    var blocked = pump || divAlarm;
+    var v = verdictOf(pUp, lockZ, blocked);
+    vT.textContent = v.t; vT.style.color = v.c; vC.style.borderColor = (v.c === GREY ? "#e5e7eb" : v.c);
+    if (v.t === "warming up") vW.textContent = "Reading the price, the target and the volatility.";
+    else if (blocked) vW.textContent = pump ? "Volatility is spiking, the read can't be trusted in a pump. Stay out." : "The exchanges are out of line, possible single venue push. Stay out.";
+    else if (lockZ != null && lockZ >= Z_LOCK) vW.textContent = "Cushion is about $" + fmt(actualCushion, 0) + " with " + mmss(secsLeft) + " left. It would take a roughly " + lockZ.toFixed(1) + " sigma swing to flip, settled for all practical purposes.";
+    else if (pUp >= 0.55 || pUp <= 0.45) vW.textContent = "Price is $" + fmt(Math.abs((price || 0) - (tgt || 0)), 0) + " " + ((price || 0) >= (tgt || 0) ? "above" : "below") + " with " + mmss(secsLeft) + " left, BTC swinging about $" + fmt(volPerMin, 0) + " a minute. It leans that way but that is not an edge, so sit out.";
+    else vW.textContent = "Right on the target with " + mmss(secsLeft) + " left. Genuinely fifty fifty, nothing to bet on.";
+
+    // 15 min decision read (trade view)
     var pb = el("pumpBar"), db = el("divBar"), dT = el("dispText"), dR = el("dispReason"), dS = el("dispStats");
     pb.style.display = pump ? "block" : "none"; if (pump) pb.textContent = "PUMP, volatility about $" + fmt(volPerMin, 0) + " a minute. Stand down.";
     db.style.display = divAlarm ? "block" : "none"; if (divAlarm) db.textContent = "EXCHANGES DISAGREE, " + divText;
@@ -292,26 +329,32 @@
     else if (pump || divAlarm) { dT.textContent = "Sit it out"; dT.style.color = AMBER; dR.textContent = divAlarm ? "The exchanges are out of line, the footprint of a single venue push or a lagging feed. Stand down, this is the setup to stay out of." : "Volatility is spiking. Cushions vanish fast and the read is unreliable. Stand down until it calms."; dS.textContent = statsBlock(""); }
     else { var de = disposition(pUp, kalshi.yesAsk, kalshi.noAsk, secsLeft); var cushionSafe = (safeCushion != null && actualCushion != null) ? (actualCushion >= safeCushion) : null; dT.textContent = de.disp; dT.style.color = de.color; dR.textContent = de.reason; dS.textContent = statsBlock("Value: Up " + (de.evUp >= 0 ? "+" : "") + Math.round(de.evUp) + "c, Down " + (de.evDown >= 0 ? "+" : "") + Math.round(de.evDown) + "c after fees" + (cushionSafe != null ? (cushionSafe ? "   (cushion pull proof)" : "   (cushion not enough yet)") : "")); }
 
-    // next hour read
-    var hD = el("hrDisp"), hR = el("hrReason"), hS = el("hrStats");
+    // next hour call (projection + verdict)
+    var hD = el("hrDisp"), hR = el("hrReason"), hS = el("hrStats"), hC = el("hrCard");
     if (hourly.target == null) {
-      hD.style.color = GREY;
-      if (hourly.none) { hD.textContent = "No hourly market open"; hR.textContent = "Kalshi's hourly above or below tends to run during US hours. Nothing open right now."; }
-      else { hD.textContent = "loading"; hR.textContent = "Reaching the Kalshi hourly market."; }
+      hD.style.color = GREY; hC.style.borderColor = "#e5e7eb";
+      if (hourly.none) { hD.textContent = "No hourly market open"; hR.textContent = "Kalshi's hourly above or below tends to run during US hours. Nothing open right now."; } else { hD.textContent = "loading"; hR.textContent = "Reaching the Kalshi hourly market."; }
       hS.textContent = "";
     } else {
       var hSecs = Math.max(0, Math.round((hourly.closeTs - now) / 1000));
-      var hSd = (sig120 != null) ? sig120 * Math.sqrt(Math.max(hSecs, 1)) : null;
-      var hpUp = (hSd != null && hSd > 0 && price != null) ? normCdf((price - hourly.target) / hSd) : null;
-      if (hpUp == null || hourly.yesAsk == null) { hD.textContent = "warming up"; hD.style.color = GREY; hR.textContent = "Gathering price to read the hourly."; hS.textContent = ""; }
+      var hSigBase = sig120 != null ? sig120 : sig30;
+      var hSd = hSigBase != null ? hSigBase * Math.sqrt(Math.max(hSecs, 1)) : null;
+      if (hSd == null || price == null || hourly.yesAsk == null) { hD.textContent = "warming up"; hD.style.color = GREY; hC.style.borderColor = "#e5e7eb"; hR.textContent = "Gathering price to project the hourly."; hS.textContent = ""; }
       else {
-        var hde = disposition(hpUp, hourly.yesAsk, hourly.noAsk, hSecs);
-        hD.textContent = hde.disp; hD.style.color = hde.color; hR.textContent = hde.reason;
-        var standing = price >= hourly.target ? ("Up by $" + fmt(price - hourly.target, 0)) : ("Down by $" + fmt(hourly.target - price, 0));
-        hS.textContent = "Price to beat $" + fmt(hourly.target) + ", closes " + ampm(hourly.closeTs) + ", " + mmss(hSecs) + " left" +
-          "\nRight now " + standing +
-          "\nModel: Up " + pctTxt(hpUp) + "   \u00b7   Kalshi: Up " + (hourly.upPct != null ? hourly.upPct + "%" : "\u2014") +
-          "   \u00b7   Up " + (hde.evUp >= 0 ? "+" : "") + Math.round(hde.evUp) + "c, Down " + (hde.evDown >= 0 ? "+" : "") + Math.round(hde.evDown) + "c";
+        var hT = hourly.target;
+        var hpUp = normCdf((price - hT) / hSd);
+        var low = price - hSd, high = price + hSd;
+        var cushionH = Math.abs(price - hT), zH = cushionH / hSd, flipH = normCdf(-zH);
+        var leadingUp = price >= hT;
+        var hcu = hourly.yesAsk, hcd = hourly.noAsk;
+        var hevUp = hpUp * 100 - hcu - feeCents(hcu / 100);
+        var hevDown = (1 - hpUp) * 100 - hcd - feeCents(hcd / 100);
+        var hv = verdictOf(hpUp, zH, blocked);
+        hD.textContent = hv.t; hD.style.color = hv.c; hC.style.borderColor = (hv.c === GREY ? "#e5e7eb" : hv.c);
+        var where = hT < low ? "below the likely range, Up looks strong" : (hT > high ? "above the likely range, Down looks strong" : "inside the likely range, still a toss");
+        hR.textContent = "Projected near $" + fmt(price, 0) + " by " + ampm(hourly.closeTs) + ", likely $" + fmt(low, 0) + " to $" + fmt(high, 0) + ". Target $" + fmt(hT, 0) + " is " + where + ". To flip from here BTC must " + (leadingUp ? "fall" : "rise") + " about $" + fmt(cushionH, 0) + ", odds about " + pctTxt(flipH) + ".";
+        hS.textContent = "BTC $" + fmt(price) + "  \u00b7  target $" + fmt(hT) + "  \u00b7  closes " + ampm(hourly.closeTs) + ", " + mmss(hSecs) + " left" +
+          "\nKalshi Up " + (hourly.upPct != null ? hourly.upPct + "%" : "\u2014") + "  \u00b7  value Up " + (hevUp >= 0 ? "+" : "") + Math.round(hevUp) + "c, Down " + (hevDown >= 0 ? "+" : "") + Math.round(hevDown) + "c";
       }
     }
   }
