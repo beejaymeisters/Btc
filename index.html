@@ -27,7 +27,7 @@
   .entry { font-size: 13px; color: #374151; margin-top: 8px; line-height: 1.5; background: #f3f4f6; border-radius: 10px; padding: 8px 10px; }
   .mline { font-size: 16px; margin-bottom: 6px; }
   .mbig { font-size: 24px; font-weight: 700; }
-  .count { font-size: 14px; margin-top: 4px; font-weight: 600; color: #374151; }
+  .count { font-size: 14px; margin-top: 2px; font-weight: 600; color: #374151; }
   .msub { font-size: 12px; color: #9ca3af; margin-top: 6px; word-break: break-all; }
   .chart { width: 100%; height: 160px; display: block; }
   .nextbtn { margin-top: 10px; width: 100%; padding: 10px; font-size: 14px; font-weight: 600; color: #1d4ed8; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; cursor: pointer; }
@@ -75,7 +75,11 @@
     </div>
 
     <div id="autoBlock">
-      <div class="mline">Price to beat: <span class="mbig" id="autoTarget">loading</span></div>
+      <div class="row" style="margin-bottom:4px;">
+        <div class="mline" style="margin-bottom:0;">Price to beat: <span class="mbig" id="autoTarget">loading</span></div>
+        <button class="linkbtn" id="targetBtn">target: locked</button>
+      </div>
+      <div class="mline" id="autoClose" style="margin-bottom:2px;">Closes: loading</div>
       <div class="row" style="margin-bottom:0;">
         <div class="count" id="autoCount"></div>
         <button class="linkbtn" id="timerBtn">timer: local</button>
@@ -88,7 +92,7 @@
     <div id="manualBlock" class="hidden">
       <div class="label">PRICE TO BEAT (target, from the Kalshi page)</div>
       <input id="targetInput" inputmode="decimal" placeholder="60721.39" />
-      <div class="label" style="margin-top:12px;">CLOSE TIME (local HH:MM)</div>
+      <div class="label" style="margin-top:12px;">CLOSE TIME (local, HH:MM 24 hour)</div>
       <input id="closeInput" placeholder="23:45" />
       <button class="nextbtn" id="nextBtn">use next 15 minute close</button>
       <div class="note" id="manualNote" style="color:#b45309;"></div>
@@ -96,7 +100,7 @@
   </div>
 
   <div class="caveat">
-    Target is exact and locked for the round. Price is blended across Coinbase, Kraken and Bitstamp, close to the index Kalshi settles on but not identical, so a call inside a few dollars is still a coin toss. The lock line under the answer is your real safety read and only firms up in the final minute. This is information, not trading advice, and these 15 minute moves are close to random.
+    Target is exact and locked for the round, so the YES or NO is pure math against your live blended price. Price is blended across Coinbase, Kraken and Bitstamp, close to the index Kalshi settles on but not identical, so a call inside a few dollars is still a coin toss. The lock line under the answer is your real safety read and only firms up in the final minute. This is information, not trading advice, and these 15 minute moves are close to random.
   </div>
 
 </div>
@@ -107,46 +111,52 @@
   var KALSHI_URL = "https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXBTC15M&status=open&limit=50";
   var Q = 15 * 60 * 1000;
 
-  var feeds = { coinbase: { p: null, t: 0, conn: false }, kraken: { p: null, t: 0, conn: false }, bitstamp: { p: null, t: 0, conn: false } };
-  var manualPriceMode = false;
-  var samples = []; // {t,p} blended, ~200s
-  var promptedManual = false;
+  var feeds = { coinbase: { p: null, t: 0 }, kraken: { p: null, t: 0 }, bitstamp: { p: null, t: 0 } };
+  var manualPriceMode = false, promptedManual = false;
+  var samples = [];
 
-  var kalshi = { ok: false, closeTs: null, upPct: null, yesAsk: null, noAsk: null, ticker: null, tries: 0 };
-  var cachedTarget = null, cachedTicker = null;   // target locked per market ticker
+  var kalshi = { ok: false, closeTs: null, liveTarget: null, upPct: null, yesAsk: null, noAsk: null, ticker: null, tries: 0 };
+  var cachedTarget = null, cachedTicker = null;
   var autoOn = true, userForcedManual = false;
-  var timerSource = "local"; // 'local' or 'kalshi'
+  var timerSource = "local";    // 'local' | 'kalshi'
+  var targetSource = "locked";  // 'locked' | 'live'
   var workingMethod = null, lastPoll = 0, polling = false;
+  var startedAt = Date.now();
 
   function el(id) { return document.getElementById(id); }
   function fmt(n, d) { if (d === undefined) d = 2; if (n === null || n === undefined || isNaN(n)) return "\u2014"; return Number(n).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }); }
   function num(x) { var v = parseFloat(x); return isNaN(v) ? null : v; }
+  function ampm(ts) { var d = new Date(ts); var h = d.getHours(), m = d.getMinutes(); var ap = h < 12 ? "AM" : "PM"; var hh = h % 12; if (hh === 0) hh = 12; return hh + ":" + ("0" + m).slice(-2) + " " + ap; }
+
+  // render on every tick (throttled to a frame)
+  var rafPending = false;
+  function scheduleRender() { if (rafPending) return; rafPending = true; requestAnimationFrame(function () { rafPending = false; render(); drawChart(); }); }
 
   // ---------------- price feeds ----------------
   function connectCoinbase() {
     try {
       var w = new WebSocket("wss://ws-feed.exchange.coinbase.com");
-      w.onopen = function () { feeds.coinbase.conn = true; w.send(JSON.stringify({ type: "subscribe", product_ids: ["BTC-USD"], channels: ["ticker"] })); };
-      w.onmessage = function (ev) { var d = JSON.parse(ev.data); if (d.type === "ticker" && d.price) { feeds.coinbase.p = parseFloat(d.price); feeds.coinbase.t = Date.now(); } };
-      w.onclose = function () { feeds.coinbase.conn = false; setTimeout(connectCoinbase, 2500); };
+      w.onopen = function () { w.send(JSON.stringify({ type: "subscribe", product_ids: ["BTC-USD"], channels: ["ticker"] })); };
+      w.onmessage = function (ev) { var d = JSON.parse(ev.data); if (d.type === "ticker" && d.price) { feeds.coinbase.p = parseFloat(d.price); feeds.coinbase.t = Date.now(); scheduleRender(); } };
+      w.onclose = function () { setTimeout(connectCoinbase, 2500); };
       w.onerror = function () { try { w.close(); } catch (e) {} };
     } catch (e) {}
   }
   function connectKraken() {
     try {
       var w = new WebSocket("wss://ws.kraken.com/v2");
-      w.onopen = function () { feeds.kraken.conn = true; w.send(JSON.stringify({ method: "subscribe", params: { channel: "ticker", symbol: ["BTC/USD"] } })); };
-      w.onmessage = function (ev) { var d = JSON.parse(ev.data); if (d.channel === "ticker" && d.data && d.data[0] && d.data[0].last != null) { feeds.kraken.p = parseFloat(d.data[0].last); feeds.kraken.t = Date.now(); } };
-      w.onclose = function () { feeds.kraken.conn = false; setTimeout(connectKraken, 2500); };
+      w.onopen = function () { w.send(JSON.stringify({ method: "subscribe", params: { channel: "ticker", symbol: ["BTC/USD"] } })); };
+      w.onmessage = function (ev) { var d = JSON.parse(ev.data); if (d.channel === "ticker" && d.data && d.data[0] && d.data[0].last != null) { feeds.kraken.p = parseFloat(d.data[0].last); feeds.kraken.t = Date.now(); scheduleRender(); } };
+      w.onclose = function () { setTimeout(connectKraken, 2500); };
       w.onerror = function () { try { w.close(); } catch (e) {} };
     } catch (e) {}
   }
   function connectBitstamp() {
     try {
       var w = new WebSocket("wss://ws.bitstamp.net");
-      w.onopen = function () { feeds.bitstamp.conn = true; w.send(JSON.stringify({ event: "bts:subscribe", data: { channel: "live_trades_btcusd" } })); };
-      w.onmessage = function (ev) { var d = JSON.parse(ev.data); if (d.event === "trade" && d.data && d.data.price) { feeds.bitstamp.p = parseFloat(d.data.price); feeds.bitstamp.t = Date.now(); } };
-      w.onclose = function () { feeds.bitstamp.conn = false; setTimeout(connectBitstamp, 2500); };
+      w.onopen = function () { w.send(JSON.stringify({ event: "bts:subscribe", data: { channel: "live_trades_btcusd" } })); };
+      w.onmessage = function (ev) { var d = JSON.parse(ev.data); if (d.event === "trade" && d.data && d.data.price) { feeds.bitstamp.p = parseFloat(d.data.price); feeds.bitstamp.t = Date.now(); scheduleRender(); } };
+      w.onclose = function () { setTimeout(connectBitstamp, 2500); };
       w.onerror = function () { try { w.close(); } catch (e) {} };
     } catch (e) {}
   }
@@ -154,27 +164,29 @@
   function blended() {
     if (manualPriceMode) { var v = el("manualInput").value; return v === "" ? null : parseFloat(v); }
     var a = freshFeeds().map(function (x) { return x.p; });
-    if (a.length === 0) return null;
+    if (!a.length) return null;
     a.sort(function (x, y) { return x - y; });
     return a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2;
   }
-  function goManualPrice(msg) { manualPriceMode = true; el("feedNote").textContent = msg || "Type the price in, read it off coinbase.com, and keep it current in the final minute."; el("feedNote").style.color = AMBER; el("feedNote").classList.remove("hidden"); render(); }
-  el("toggleBtn").addEventListener("click", function () { manualPriceMode = !manualPriceMode; if (!manualPriceMode) el("feedNote").classList.add("hidden"); render(); });
+  function goManualPrice(msg) { manualPriceMode = true; el("feedNote").textContent = msg || "Type the price in, read it off coinbase.com, and keep it current in the final minute."; el("feedNote").style.color = AMBER; el("feedNote").classList.remove("hidden"); scheduleRender(); }
+  el("toggleBtn").addEventListener("click", function () { manualPriceMode = !manualPriceMode; if (!manualPriceMode) el("feedNote").classList.add("hidden"); scheduleRender(); });
+  el("manualInput").addEventListener("input", scheduleRender);
 
   // ---------------- local clock-synced timer ----------------
   function localClose() { return Math.ceil((Date.now() + 1) / Q) * Q; }
   function effCloseTs() {
     if (timerSource === "kalshi" && kalshi.ok && kalshi.closeTs) return kalshi.closeTs;
-    if (!autoOn) { // manual block close input
+    if (!autoOn) {
       var v = el("closeInput").value.trim(); if (!/^\d{1,2}:\d{2}$/.test(v)) return localClose();
       var p = v.split(":"); var h = parseInt(p[0], 10), m = parseInt(p[1], 10); if (h > 23 || m > 59) return localClose();
       var d = new Date(); d.setHours(h, m, 0, 0); if (d.getTime() < Date.now() - 60000) d.setDate(d.getDate() + 1); return d.getTime();
     }
     return localClose();
   }
-  el("timerBtn").addEventListener("click", function () { timerSource = timerSource === "local" ? "kalshi" : "local"; render(); });
+  el("timerBtn").addEventListener("click", function () { timerSource = timerSource === "local" ? "kalshi" : "local"; scheduleRender(); });
+  el("targetBtn").addEventListener("click", function () { targetSource = targetSource === "locked" ? "live" : "locked"; scheduleRender(); });
 
-  // ---------------- Kalshi (target locked per ticker, light poll for crowd) ----------------
+  // ---------------- Kalshi ----------------
   function routeUrl(m, url) { if (m === 0) return url; if (m === 1) return "https://corsproxy.io/?url=" + encodeURIComponent(url); return "https://api.allorigins.win/raw?url=" + encodeURIComponent(url); }
   function fetchKalshi(cb) {
     var order = workingMethod !== null ? [workingMethod, 0, 1, 2] : [0, 1, 2];
@@ -184,8 +196,7 @@
     (function tryNext() {
       if (idx >= queue.length) { cb(null); return; }
       var m = queue[idx++];
-      fetch(routeUrl(m, KALSHI_URL), { cache: "no-store" })
-        .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+      fetch(routeUrl(m, KALSHI_URL), { cache: "no-store" }).then(function (r) { if (!r.ok) throw 0; return r.json(); })
         .then(function (data) { if (data && data.markets) { workingMethod = m; cb(data.markets); } else tryNext(); })
         .catch(function () { tryNext(); });
     })();
@@ -212,7 +223,7 @@
           kalshi.ok = true; kalshi.tries = 0; autoOn = true;
           kalshi.closeTs = Date.parse(mk.close_time);
           kalshi.ticker = mk.ticker;
-          // LOCK target once per ticker, never overwrite within the round
+          kalshi.liveTarget = num(mk.floor_strike);
           if (cachedTicker !== mk.ticker) { cachedTarget = num(mk.floor_strike); cachedTicker = mk.ticker; }
           var bid = num(mk.yes_bid_dollars), ask = num(mk.yes_ask_dollars), last = num(mk.last_price_dollars);
           var mid = (bid !== null && ask !== null && (bid > 0 || ask > 0)) ? (bid + ask) / 2 : last;
@@ -222,35 +233,37 @@
           kalshi.noAsk = noAsk !== null ? Math.round(noAsk * 100) : (kalshi.upPct !== null ? 100 - kalshi.upPct : null);
         } else failKalshi();
       } else failKalshi();
-      render();
+      scheduleRender();
     });
   }
   function failKalshi() { kalshi.ok = false; kalshi.tries++; if (kalshi.tries >= 3) autoOn = false; }
 
   el("modeBtn").addEventListener("click", function () {
     if (autoOn) { autoOn = false; userForcedManual = true; } else { autoOn = true; userForcedManual = false; kalshi.tries = 0; pollKalshi(); }
-    render();
+    scheduleRender();
   });
   el("nextBtn").addEventListener("click", function () {
     var d = new Date(); var mins = d.getMinutes(); var add = 15 - (mins % 15); if (add === 0) add = 15;
-    d.setMinutes(mins + add, 0, 0);
-    el("closeInput").value = ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); render();
+    d.setMinutes(mins + add, 0, 0); el("closeInput").value = ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); scheduleRender();
   });
+  el("targetInput").addEventListener("input", scheduleRender);
+  el("closeInput").addEventListener("input", scheduleRender);
 
-  function effTarget() { if (autoOn) return cachedTarget; var v = el("targetInput").value; return v === "" ? null : parseFloat(v); }
+  function effTarget() {
+    if (!autoOn) { var v = el("targetInput").value; return v === "" ? null : parseFloat(v); }
+    return targetSource === "live" ? kalshi.liveTarget : cachedTarget;
+  }
 
-  // ---------------- main loop ----------------
+  // ---------------- 1s loop: sample + poll + clock ----------------
   setInterval(function () {
     var p = blended();
     if (p !== null && !isNaN(p)) { var t = Date.now(); samples.push({ t: t, p: p }); samples = samples.filter(function (s) { return s.t >= t - 200000; }); }
     if (!manualPriceMode && !promptedManual && Date.now() > startedAt + 9000 && blended() === null) { promptedManual = true; goManualPrice("No exchange feed reached your phone. Switched to manual, type the price in."); }
-    var cts = effCloseTs();
-    var sLeft = cts !== null ? (cts - Date.now()) / 1000 : null;
+    var cts = effCloseTs(); var sLeft = cts !== null ? (cts - Date.now()) / 1000 : null;
     var interval = (sLeft !== null && sLeft <= 90) ? 2000 : 6000;
     if (!userForcedManual && Date.now() - lastPoll >= interval) pollKalshi();
-    render(); drawChart();
+    scheduleRender();
   }, 1000);
-  var startedAt = Date.now();
   pollKalshi();
 
   // ---------------- chart ----------------
@@ -264,19 +277,15 @@
     var now = Date.now(), span = 180000;
     var pts = samples.filter(function (s) { return s.t >= now - span; });
     var tgt = effTarget();
-    var vals = pts.map(function (s) { return s.p; });
-    if (tgt != null && !isNaN(tgt)) vals.push(tgt);
+    var vals = pts.map(function (s) { return s.p; }); if (tgt != null && !isNaN(tgt)) vals.push(tgt);
     if (vals.length < 2) { ctx.fillStyle = GREY; ctx.font = "13px system-ui"; ctx.fillText("gathering price...", 10, h / 2); return; }
-    var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
-    if (min === max) { min -= 10; max += 10; }
+    var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals); if (min === max) { min -= 10; max += 10; }
     var pad = (max - min) * 0.14; min -= pad; max += pad;
     function X(t) { return ((t - (now - span)) / span) * w; }
     function Y(p) { return h - ((p - min) / (max - min)) * h; }
-    var last = pts[pts.length - 1];
-    var above = tgt == null || isNaN(tgt) ? true : last.p >= tgt;
+    var last = pts[pts.length - 1]; var above = tgt == null || isNaN(tgt) ? true : last.p >= tgt;
     if (tgt != null && !isNaN(tgt)) {
-      ctx.strokeStyle = AMBER; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(0, Y(tgt)); ctx.lineTo(w, Y(tgt)); ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle = AMBER; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(0, Y(tgt)); ctx.lineTo(w, Y(tgt)); ctx.stroke(); ctx.setLineDash([]);
       ctx.fillStyle = AMBER; ctx.font = "11px system-ui"; ctx.fillText("target " + fmt(tgt, 0), 4, Math.max(11, Y(tgt) - 4));
     }
     ctx.strokeStyle = above ? YES : NO; ctx.lineWidth = 2; ctx.beginPath();
@@ -313,9 +322,12 @@
 
     if (autoOn) {
       el("autoBlock").classList.remove("hidden"); el("manualBlock").classList.add("hidden");
-      el("marketLabel").textContent = (cachedTarget !== null) ? "MARKET (live from Kalshi)" : "MARKET (reaching Kalshi...)";
+      var tShown = effTarget();
+      el("marketLabel").textContent = (tShown !== null) ? "MARKET (live from Kalshi)" : "MARKET (reaching Kalshi...)";
       el("modeBtn").textContent = "type target myself";
-      el("autoTarget").textContent = (cachedTarget !== null) ? ("$" + fmt(cachedTarget)) : "loading";
+      el("autoTarget").textContent = (tShown !== null) ? ("$" + fmt(tShown)) : "loading";
+      el("targetBtn").textContent = "target: " + (targetSource === "locked" ? "locked" : "live");
+      el("autoClose").textContent = closeTs !== null ? ("Closes " + ampm(closeTs)) : "Closes: loading";
       el("autoUp").textContent = (kalshi.upPct !== null) ? ("Kalshi crowd: Up " + kalshi.upPct + "%, Down " + (100 - kalshi.upPct) + "%") : "";
       if (kalshi.yesAsk !== null && kalshi.noAsk !== null) { el("autoEntry").classList.remove("hidden"); el("autoEntry").textContent = "Entry math: Up costs about " + kalshi.yesAsk + "c to win " + (100 - kalshi.yesAsk) + "c. Down costs about " + kalshi.noAsk + "c to win " + (100 - kalshi.noAsk) + "c. The cheap side is the unlikely one."; }
       else el("autoEntry").classList.add("hidden");
@@ -353,11 +365,8 @@
       else if (!inFinal) { var mins = Math.floor(secsLeft / 60); safe.style.color = GREY; safe.textContent = "Not locked yet. " + (mins >= 1 ? (mins + "m left") : (secsLeft + "s left")) + ", BTC can still swing past this. The lock starts in the final minute."; }
       else if (r <= 0) { safe.style.color = isYes ? YES : NO; safe.textContent = "Settled. Final average is " + (isYes ? "above" : "below") + " the target."; }
       else if (price !== null) {
-        var threshRemain = (60 * tgt - Ssum) / r;
-        var move = isYes ? (price - threshRemain) : (threshRemain - price);
-        var dir = isYes ? "fall" : "rise";
-        var safeFromPull = Math.abs(move) >= 75;
-        safe.style.color = safeFromPull ? YES : NO;
+        var threshRemain = (60 * tgt - Ssum) / r; var move = isYes ? (price - threshRemain) : (threshRemain - price); var dir = isYes ? "fall" : "rise";
+        var safeFromPull = Math.abs(move) >= 75; safe.style.color = safeFromPull ? YES : NO;
         safe.textContent = "Locked " + windowCount + " of 60s. To flip, BTC must " + dir + " about $" + fmt(Math.abs(move), 0) + " and hold. " + (safeFromPull ? "A pull can't realistically do that." : "Thin, a pull could flip this, stay careful.");
       } else safe.textContent = "";
     } else {
