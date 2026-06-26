@@ -238,7 +238,7 @@
   function baselineSpread() { if (spreadHist.length < 20) return null; var arr = spreadHist.map(function (x) { return x.s; }).sort(function (a, b) { return a - b; }); return arr[Math.floor(arr.length / 2)]; }
   function volWindow(sec) { var now = Date.now(); var pts = samples.filter(function (s) { return s.t >= now - sec * 1000; }); if (pts.length < 8) return null; var sumsq = 0, n = 0; for (var i = 1; i < pts.length; i++) { var dt = (pts[i].t - pts[i - 1].t) / 1000; if (dt > 0 && dt < 3) { var d = pts[i].p - pts[i - 1].p; sumsq += (d * d) / dt; n++; } } if (n < 6) return null; return Math.sqrt(sumsq / n); }
   function priceAgo(sec) { if (!samples.length) return null; var tg = Date.now() - sec * 1000, best = null, bd = Infinity; for (var i = 0; i < samples.length; i++) { var d = Math.abs(samples[i].t - tg); if (d < bd) { bd = d; best = samples[i]; } } return bd <= 3000 ? best.p : null; }
-  function maxBurst(winSec, jumpSec) { var now = Date.now(), pts = samples.filter(function (s) { return s.t >= now - winSec * 1000; }), mx = 0; for (var i = 0; i < pts.length; i++) { for (var j = i + 1; j < pts.length; j++) { if (pts[j].t - pts[i].t >= jumpSec * 1000) { var d = Math.abs(pts[j].p - pts[i].p); if (d > mx) mx = d; break; } } } return mx; }
+  function maxBurst(winSec, jumpSec) { var now = Date.now(), pts = samples.filter(function (s) { return s.t >= now - winSec * 1000; }), best = 0; for (var i = 0; i < pts.length; i++) { for (var j = i + 1; j < pts.length; j++) { if (pts[j].t - pts[i].t >= jumpSec * 1000) { var d = pts[j].p - pts[i].p; if (Math.abs(d) > Math.abs(best)) best = d; break; } } } return best; }
 
   function localClose() { return Math.ceil((Date.now() + 1) / Q) * Q; }
   function effCloseTs() { if (timerSource === "kalshi" && kalshi.ok && kalshi.closeTs) return kalshi.closeTs; if (!autoOn) { var v = el("closeInput").value.trim(); if (!/^\d{1,2}:\d{2}$/.test(v)) return localClose(); var p = v.split(":"); var h = parseInt(p[0], 10), m = parseInt(p[1], 10); if (h > 23 || m > 59) return localClose(); var d = new Date(); d.setHours(h, m, 0, 0); if (d.getTime() < Date.now() - 60000) d.setDate(d.getDate() + 1); return d.getTime(); } return localClose(); }
@@ -423,24 +423,25 @@
     if (move10 == null) { gS.textContent = "warming up"; gS.style.color = GREY; gR.textContent = "Gathering a few seconds of price to read the speed."; gSt.textContent = ""; }
     else {
       var sState, sColor;
-      if (pump) { sState = "Very fast"; sColor = NO; }
+      if (pump || (speedRatio != null && speedRatio >= 3)) { sState = "Very fast"; sColor = NO; }
       else if (speedRatio == null) { sState = "reading"; sColor = GREY; }
       else if (speedRatio >= 1.7) { sState = "Fast"; sColor = AMBER; }
       else if (speedRatio <= 0.6) { sState = "Calm"; sColor = YES; }
       else { sState = "Normal"; sColor = "#374151"; }
       gS.textContent = sState; gS.style.color = sColor;
-      var dir3;
-      if (Math.abs(move10) < 2) dir3 = "about flat right now";
-      else if (leaning == null) dir3 = move10 > 0 ? "rising right now" : "falling right now";
-      else { var toward = (leaning && move10 < 0) || (!leaning && move10 > 0); dir3 = toward ? "gap shrinking right now" : "gap widening right now"; }
-      gR.textContent = "Moved about $" + fmt(Math.abs(move10), 0) + " in the last 10s, around $" + fmt(pace, 1) + " a second, " + dir3 + ".";
-      var sc;
-      if (lockZ == null) sc = "Reading the gap against the clock.";
-      else if (lockZ >= Z_LOCK) sc = "Even at this speed, your gap is effectively safe to the close.";
-      else if (lockZ >= Z_ALMOST) sc = "At this speed a flip is unlikely, the gap is close to safe.";
-      else sc = "At this speed the gap can still flip, it is not safe yet. The lock firms up as the clock runs down.";
+      var moveDir = Math.abs(move10) < 1 ? "about flat" : (move10 > 0 ? ("up $" + fmt(Math.abs(move10), 0)) : ("down $" + fmt(Math.abs(move10), 0)));
+      var gapEffect = "";
+      if (leaning != null && Math.abs(move10) >= 2) { var toward = (leaning && move10 < 0) || (!leaning && move10 > 0); gapEffect = toward ? " Cushion shrinking." : " Cushion widening."; }
+      else if (leaning != null) gapEffect = " Cushion steady.";
+      gR.textContent = "BTC moved " + moveDir + " in the last 10s, about $" + fmt(pace, 1) + " a second." + gapEffect;
+      var burstDir = Math.abs(burst) < 1 ? "barely moved" : (burst > 0 ? ("up $" + fmt(Math.abs(burst), 0)) : ("down $" + fmt(Math.abs(burst), 0)));
+      var lines = [];
+      lines.push("Fastest move lately, " + burstDir + " in a few seconds.");
       var runway = (pace != null && pace > 0 && actualCushion != null) ? mmss(Math.round(actualCushion / pace)) : null;
-      gSt.textContent = "Fastest jump lately, about $" + fmt(burst, 0) + " in a few seconds" + "\n" + sc + (runway ? ("\nIf it ran one way at this pace, your $" + fmt(actualCushion, 0) + " gap is about " + runway + " of runway, and price rarely runs straight.") : "");
+      if (runway) lines.push("At this pace your $" + fmt(actualCushion, 0) + " gap is about " + runway + " of one way movement, and price rarely runs straight.");
+      if (basePace && basePace > 0) { var A = Math.max(1, Math.round(0.6 * basePace)), B = Math.round(1.7 * basePace), C = Math.round(3 * basePace); lines.push("Labels: calm under $" + A + " in 10s, normal $" + A + " to $" + B + ", fast $" + B + " to $" + C + ", very fast over $" + C + ". The scale shifts with how lively BTC is."); }
+      else lines.push("Labels compare the last 10s to BTC's recent normal. Calm is slower, fast is well above, very fast is a spike. Live numbers appear once it has a baseline.");
+      gSt.textContent = lines.join("\n");
     }
 
     var vT = el("verdictText"), vW = el("verdictWhy"), vC = el("verdictCard");
