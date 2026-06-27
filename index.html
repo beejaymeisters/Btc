@@ -5,42 +5,57 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>BTC up or down</title>
 <style>
-  * { box-sizing: border-box; }
-  body { font-family: system-ui, -apple-system, sans-serif; background: #f9fafb; margin: 0; padding: 16px; color: #111827; }
-  .wrap { max-width: 440px; margin: 0 auto; }
-  .top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 8px; }
-  h1 { font-size: 19px; font-weight: 700; margin: 0; }
-  .status { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 16px; margin-bottom: 12px; }
-  .vcard { border-width: 2px; }
-  .label { font-size: 12px; color: #6b7280; margin-bottom: 6px; font-weight: 600; letter-spacing: .3px; }
-  .answer { text-align: center; padding: 24px 16px; border-width: 2px; border-style: solid; border-color: #e5e7eb; }
-  .word { font-size: 64px; font-weight: 800; line-height: 1; color: #9ca3af; }
-  .gap { font-size: 15px; color: #374151; margin-top: 8px; }
-  .judge { font-size: 13px; color: #6b7280; margin-top: 4px; }
-  .safety { font-size: 13px; margin-top: 10px; font-weight: 600; line-height: 1.4; }
-  .alarmbar { display: none; background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; font-weight: 700; font-size: 13px; border-radius: 10px; padding: 8px 10px; margin-bottom: 10px; }
-  .disp { font-size: 22px; font-weight: 800; line-height: 1.15; }
-  .verdict { font-size: 30px; font-weight: 800; line-height: 1.1; }
-  .dispsm { font-size: 18px; font-weight: 800; line-height: 1.15; }
-  .reason { font-size: 13px; color: #374151; margin-top: 6px; line-height: 1.5; }
-  .stat { font-size: 13px; color: #374151; margin-top: 8px; line-height: 1.6; white-space: pre-line; }
-  input { width: 100%; padding: 12px 14px; font-size: 18px; border: 1px solid #d1d5db; border-radius: 10px; }
-  .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; }
-  .linkbtn { font-size: 12px; font-weight: 600; color: #2563eb; background: none; border: none; cursor: pointer; padding: 0; white-space: nowrap; }
-  .bigprice { font-size: 28px; font-weight: 700; }
-  .feeds { font-size: 12px; color: #9ca3af; margin-top: 4px; }
-  .entry { font-size: 13px; color: #374151; margin-top: 8px; line-height: 1.5; background: #f3f4f6; border-radius: 10px; padding: 8px 10px; }
-  .mline { font-size: 16px; margin-bottom: 6px; }
-  .mbig { font-size: 24px; font-weight: 700; }
-  .count { font-size: 14px; margin-top: 2px; font-weight: 600; color: #374151; }
-  .msub { font-size: 12px; color: #9ca3af; margin-top: 6px; word-break: break-all; }
-  .chart { width: 100%; height: 160px; display: block; }
-  .nextbtn { margin-top: 10px; width: 100%; padding: 10px; font-size: 14px; font-weight: 600; color: #1d4ed8; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; cursor: pointer; }
-  .note { font-size: 12px; margin-top: 8px; line-height: 1.5; }
-  .caveat { font-size: 12px; color: #92400e; background: #fef3c7; border: 1px solid #fde68a; border-radius: 10px; padding: 10px 12px; line-height: 1.5; }
-  .hidden { display: none; }
+  :root{
+    --bg:#f5f6f8; --card:#ffffff; --soft:#f3f4f6; --border:#e7e8ec;
+    --text:#0f1115; --muted:#6b7280; --muted2:#475467;
+    --green:#0ca678; --red:#e5484d; --amber:#d97706; --blue:#2563eb;
+    --shadow:0 1px 2px rgba(16,24,40,0.04), 0 2px 6px rgba(16,24,40,0.05);
+  }
+  * { box-sizing:border-box; }
+  html,body{ background:var(--bg); }
+  body{ font-family:-apple-system, system-ui, "Segoe UI", Roboto, sans-serif; margin:0; padding:18px 16px 44px; color:var(--text); min-height:100vh; -webkit-font-smoothing:antialiased; }
+  .wrap{ max-width:460px; margin:0 auto; }
+  .top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; gap:8px; }
+  h1{ font-size:25px; font-weight:800; letter-spacing:-0.02em; margin:0; }
+  .status{ font-size:12px; font-weight:700; display:flex; align-items:center; gap:6px; white-space:nowrap; background:var(--card); border:1px solid var(--border); padding:6px 11px; border-radius:999px; box-shadow:var(--shadow); }
+  .dot{ width:8px; height:8px; border-radius:50%; display:inline-block; }
+  .section{ font-size:11px; font-weight:800; letter-spacing:0.09em; text-transform:uppercase; color:var(--muted); margin:24px 4px 11px; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:18px; padding:17px 19px; margin-bottom:12px; box-shadow:var(--shadow); }
+  #verdictCard{ padding:22px 22px; border-radius:22px; box-shadow:0 2px 10px rgba(16,24,40,0.07); }
+  .label{ font-size:11px; color:var(--muted); margin-bottom:9px; font-weight:700; letter-spacing:0.07em; text-transform:uppercase; }
+  .answer{ text-align:center; padding:22px 18px; }
+  .word{ font-size:42px; font-weight:800; line-height:1; letter-spacing:-0.02em; color:#cbd0d8; }
+  .gap{ font-size:15px; color:var(--muted2); margin-top:10px; font-weight:600; }
+  .judge{ font-size:13px; color:var(--muted); margin-top:5px; }
+  .safety{ font-size:13px; margin-top:13px; font-weight:600; line-height:1.45; color:var(--muted2); }
+  .alarmbar{ display:none; background:#fff1f2; border:1px solid #fecdd3; color:var(--red); font-weight:700; font-size:13px; border-radius:12px; padding:9px 12px; margin-bottom:11px; }
+  .disp{ font-size:22px; font-weight:800; line-height:1.15; color:#9aa1ac; }
+  .verdict{ font-size:44px; font-weight:800; line-height:1.04; letter-spacing:-0.025em; color:#9aa1ac; }
+  .dispsm{ font-size:19px; font-weight:800; line-height:1.15; color:#9aa1ac; }
+  .reason{ font-size:13.5px; color:var(--muted2); margin-top:8px; line-height:1.55; }
+  .stat{ font-size:13px; color:var(--muted2); margin-top:10px; line-height:1.7; white-space:pre-line; }
+  input{ width:100%; padding:13px 15px; font-size:17px; background:#fff; color:var(--text); border:1px solid #d7dae0; border-radius:12px; }
+  input::placeholder{ color:#aab0b8; }
+  .row{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; }
+  .linkbtn{ font-size:12px; font-weight:700; color:var(--blue); background:none; border:none; cursor:pointer; padding:0; white-space:nowrap; }
+  .bigprice{ font-size:30px; font-weight:800; letter-spacing:-0.02em; }
+  .feeds{ font-size:12px; color:var(--muted); margin-top:6px; }
+  .entry{ font-size:13px; color:var(--muted2); margin-top:10px; line-height:1.5; background:var(--soft); border-radius:12px; padding:10px 12px; }
+  .mline{ font-size:16px; margin-bottom:6px; color:var(--text); }
+  .mbig{ font-size:24px; font-weight:800; }
+  .count{ font-size:14px; margin-top:2px; font-weight:700; color:var(--muted2); }
+  .msub{ font-size:12px; color:#aab0b8; margin-top:7px; word-break:break-all; }
+  .chart{ width:100%; height:172px; display:block; }
+  .nextbtn{ margin-top:10px; width:100%; padding:11px; font-size:14px; font-weight:700; color:var(--blue); background:#eff4ff; border:1px solid #cfe0ff; border-radius:12px; cursor:pointer; }
+  .note{ font-size:12px; margin-top:8px; line-height:1.5; }
+  .caveat{ font-size:12px; color:var(--muted); background:transparent; border:1px solid var(--border); border-radius:14px; padding:13px 15px; line-height:1.6; margin-top:10px; }
+  .hidden{ display:none; }
+  @media (min-width:820px){
+    body{ padding:34px 24px 60px; }
+    .wrap{ max-width:600px; }
+    h1{ font-size:30px; }
+    #verdictCard .verdict{ font-size:50px; }
+  }
 </style>
 </head>
 <body>
@@ -50,6 +65,8 @@
     <h1>BTC up or down</h1>
     <span class="status" id="status"><span class="dot" id="dot"></span><span id="statusText">connecting</span></span>
   </div>
+
+  <div class="section">The call</div>
 
   <div class="card vcard" id="verdictCard">
     <div class="label">CLAUDE'S CALL (15 min)</div>
@@ -64,6 +81,8 @@
     <div class="judge" id="answerJudge">loading the live market</div>
     <div class="safety" id="answerSafety"></div>
   </div>
+
+  <div class="section">Live readings</div>
 
   <div class="card" id="gsCard">
     <div class="label">GAP SPEED (how fast the cushion is moving)</div>
@@ -94,6 +113,8 @@
     <div class="stat" id="hrStats"></div>
   </div>
 
+  <div class="section">Track record</div>
+
   <div class="card" id="sbCard">
     <div class="row"><div class="label" style="margin-bottom:0;">SCOREBOARD (Claude's Call vs reality)</div><button class="linkbtn" id="sbReset">reset</button></div>
     <div class="stat" id="sbBody">Building the record. Each call is logged one minute before a close while this page is open, then checked against how Kalshi settled.</div>
@@ -103,6 +124,8 @@
     <div class="label">RECENT KALSHI RESULTS (15 min, up or down)</div>
     <div class="stat" id="histBody">Loading recent settled results.</div>
   </div>
+
+  <div class="section">Market and price</div>
 
   <div class="card">
     <div class="label">LIVE CHART (blended price vs 15 min target)</div>
@@ -157,7 +180,7 @@
 
 <script>
 (function () {
-  var YES = "#15803d", NO = "#b91c1c", GREY = "#9ca3af", AMBER = "#b45309";
+  var YES = "#0ca678", NO = "#e5484d", GREY = "#9aa1ac", AMBER = "#d97706";
   var BASE = "https://api.elections.kalshi.com/trade-api/v2/markets?status=open&limit=50&series_ticker=";
   var URL_15M = BASE + "KXBTC15M", URL_HR = BASE + "KXBTCD";
   var Q = 15 * 60 * 1000, FRESH = 5000, HOLD = 15000, DIV_FLOOR = 20, DIV_MULT = 3;
@@ -443,7 +466,7 @@
     el("answerLabel").textContent = inFinal ? "15 MIN SETTLEMENT (final minute average)" : "15 MIN LIVE READ (price vs target)";
     if (haveTarget && validJudge) {
       var isYes = judge >= tgt, diff = judge - tgt;
-      word.textContent = isYes ? "YES" : "NO"; word.style.color = isYes ? YES : NO; card.style.borderColor = isYes ? YES : NO; card.style.background = isYes ? "#f0fdf4" : "#fef2f2";
+      word.textContent = isYes ? "YES" : "NO"; word.style.color = isYes ? YES : NO; card.style.borderColor = isYes ? YES : NO; card.style.background = isYes ? "#ecfdf5" : "#fff1f2";
       gap.textContent = (diff >= 0 ? "Above" : "Below") + " the price to beat by $" + fmt(Math.abs(diff));
       jl.textContent = "Judging on $" + fmt(judge) + (inFinal ? (" (avg of " + windowCount + " of 60 secs)") : " (live price)") + (held ? ", price catching up" : "");
       if (secsLeft === null) safe.textContent = "";
@@ -565,6 +588,7 @@
   }
 
   connectCoinbase(); connectKraken(); connectBitstamp();
+  window.addEventListener("resize", scheduleRender);
   render(); drawChart();
 })();
 </script>
