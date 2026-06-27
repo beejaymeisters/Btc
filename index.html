@@ -5,57 +5,49 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>BTC up or down</title>
 <style>
-  :root{
-    --bg:#f5f6f8; --card:#ffffff; --soft:#f3f4f6; --border:#e7e8ec;
-    --text:#0f1115; --muted:#6b7280; --muted2:#475467;
-    --green:#0ca678; --red:#e5484d; --amber:#d97706; --blue:#2563eb;
-    --shadow:0 1px 2px rgba(16,24,40,0.04), 0 2px 6px rgba(16,24,40,0.05);
-  }
-  * { box-sizing:border-box; }
+  :root{ --bg:#f5f6f8; --card:#ffffff; --soft:#f3f4f6; --border:#e7e8ec; --text:#0f1115; --muted:#6b7280; --muted2:#475467; --green:#0ca678; --red:#e5484d; --amber:#d97706; --blue:#2563eb; --shadow:0 1px 2px rgba(16,24,40,0.05); }
+  *{ box-sizing:border-box; }
   html,body{ background:var(--bg); }
-  body{ font-family:-apple-system, system-ui, "Segoe UI", Roboto, sans-serif; margin:0; padding:18px 16px 44px; color:var(--text); min-height:100vh; -webkit-font-smoothing:antialiased; }
-  .wrap{ max-width:460px; margin:0 auto; }
-  .top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; gap:8px; }
-  h1{ font-size:25px; font-weight:800; letter-spacing:-0.02em; margin:0; }
-  .status{ font-size:12px; font-weight:700; display:flex; align-items:center; gap:6px; white-space:nowrap; background:var(--card); border:1px solid var(--border); padding:6px 11px; border-radius:999px; box-shadow:var(--shadow); }
-  .dot{ width:8px; height:8px; border-radius:50%; display:inline-block; }
-  .section{ font-size:11px; font-weight:800; letter-spacing:0.09em; text-transform:uppercase; color:var(--muted); margin:24px 4px 11px; }
-  .card{ background:var(--card); border:1px solid var(--border); border-radius:18px; padding:17px 19px; margin-bottom:12px; box-shadow:var(--shadow); }
-  #verdictCard{ padding:22px 22px; border-radius:22px; box-shadow:0 2px 10px rgba(16,24,40,0.07); }
-  .label{ font-size:11px; color:var(--muted); margin-bottom:9px; font-weight:700; letter-spacing:0.07em; text-transform:uppercase; }
-  .answer{ text-align:center; padding:22px 18px; }
-  .word{ font-size:42px; font-weight:800; line-height:1; letter-spacing:-0.02em; color:#cbd0d8; }
-  .gap{ font-size:15px; color:var(--muted2); margin-top:10px; font-weight:600; }
-  .judge{ font-size:13px; color:var(--muted); margin-top:5px; }
-  .safety{ font-size:13px; margin-top:13px; font-weight:600; line-height:1.45; color:var(--muted2); }
-  .alarmbar{ display:none; background:#fff1f2; border:1px solid #fecdd3; color:var(--red); font-weight:700; font-size:13px; border-radius:12px; padding:9px 12px; margin-bottom:11px; }
-  .disp{ font-size:22px; font-weight:800; line-height:1.15; color:#9aa1ac; }
-  .verdict{ font-size:44px; font-weight:800; line-height:1.04; letter-spacing:-0.025em; color:#9aa1ac; }
-  .dispsm{ font-size:19px; font-weight:800; line-height:1.15; color:#9aa1ac; }
-  .reason{ font-size:13.5px; color:var(--muted2); margin-top:8px; line-height:1.55; }
-  .stat{ font-size:13px; color:var(--muted2); margin-top:10px; line-height:1.7; white-space:pre-line; }
-  input{ width:100%; padding:13px 15px; font-size:17px; background:#fff; color:var(--text); border:1px solid #d7dae0; border-radius:12px; }
+  body{ font-family:-apple-system, system-ui, "Segoe UI", Roboto, sans-serif; margin:0; padding:12px 11px 24px; color:var(--text); -webkit-font-smoothing:antialiased; }
+  .wrap{ max-width:520px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:9px; align-items:start; }
+  .top{ grid-column:1 / -1; display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:2px; }
+  h1{ font-size:19px; font-weight:800; letter-spacing:-0.02em; margin:0; }
+  .status{ font-size:11px; font-weight:700; display:flex; align-items:center; gap:5px; white-space:nowrap; background:var(--card); border:1px solid var(--border); padding:5px 9px; border-radius:999px; box-shadow:var(--shadow); }
+  .dot{ width:7px; height:7px; border-radius:50%; display:inline-block; }
+  .section{ display:none; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px 13px; box-shadow:var(--shadow); overflow:hidden; }
+  #verdictCard{ grid-column:span 2; padding:14px 15px; border-radius:16px; }
+  .wide{ grid-column:span 2; }
+  .label{ font-size:9.5px; color:var(--muted); margin-bottom:6px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; line-height:1.25; }
+  .answer{ text-align:center; padding:12px 10px; }
+  .word{ font-size:34px; font-weight:800; line-height:1; letter-spacing:-0.02em; color:#cbd0d8; }
+  .gap{ font-size:13px; color:var(--muted2); margin-top:7px; font-weight:600; }
+  .judge{ font-size:11.5px; color:var(--muted); margin-top:4px; }
+  .safety{ font-size:11.5px; margin-top:8px; font-weight:600; line-height:1.4; color:var(--muted2); }
+  .alarmbar{ display:none; background:#fff1f2; border:1px solid #fecdd3; color:var(--red); font-weight:700; font-size:11.5px; border-radius:9px; padding:7px 9px; margin-bottom:8px; }
+  .disp{ font-size:18px; font-weight:800; line-height:1.12; color:#9aa1ac; }
+  .verdict{ font-size:26px; font-weight:800; line-height:1.06; letter-spacing:-0.02em; color:#9aa1ac; }
+  .dispsm{ font-size:16px; font-weight:800; line-height:1.12; color:#9aa1ac; }
+  .reason{ font-size:11.5px; color:var(--muted2); margin-top:6px; line-height:1.45; }
+  .stat{ font-size:11.5px; color:var(--muted2); margin-top:7px; line-height:1.5; white-space:pre-line; }
+  input{ width:100%; padding:10px 11px; font-size:16px; background:#fff; color:var(--text); border:1px solid #d7dae0; border-radius:10px; }
   input::placeholder{ color:#aab0b8; }
-  .row{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; }
-  .linkbtn{ font-size:12px; font-weight:700; color:var(--blue); background:none; border:none; cursor:pointer; padding:0; white-space:nowrap; }
-  .bigprice{ font-size:30px; font-weight:800; letter-spacing:-0.02em; }
-  .feeds{ font-size:12px; color:var(--muted); margin-top:6px; }
-  .entry{ font-size:13px; color:var(--muted2); margin-top:10px; line-height:1.5; background:var(--soft); border-radius:12px; padding:10px 12px; }
-  .mline{ font-size:16px; margin-bottom:6px; color:var(--text); }
-  .mbig{ font-size:24px; font-weight:800; }
-  .count{ font-size:14px; margin-top:2px; font-weight:700; color:var(--muted2); }
-  .msub{ font-size:12px; color:#aab0b8; margin-top:7px; word-break:break-all; }
-  .chart{ width:100%; height:172px; display:block; }
-  .nextbtn{ margin-top:10px; width:100%; padding:11px; font-size:14px; font-weight:700; color:var(--blue); background:#eff4ff; border:1px solid #cfe0ff; border-radius:12px; cursor:pointer; }
-  .note{ font-size:12px; margin-top:8px; line-height:1.5; }
-  .caveat{ font-size:12px; color:var(--muted); background:transparent; border:1px solid var(--border); border-radius:14px; padding:13px 15px; line-height:1.6; margin-top:10px; }
+  .row{ display:flex; justify-content:space-between; align-items:center; margin-bottom:7px; gap:6px; }
+  .linkbtn{ font-size:11px; font-weight:700; color:var(--blue); background:none; border:none; cursor:pointer; padding:0; white-space:nowrap; }
+  .bigprice{ font-size:22px; font-weight:800; letter-spacing:-0.02em; }
+  .feeds{ font-size:10.5px; color:var(--muted); margin-top:4px; }
+  .entry{ font-size:11.5px; color:var(--muted2); margin-top:7px; line-height:1.45; background:var(--soft); border-radius:9px; padding:8px 9px; }
+  .mline{ font-size:14px; margin-bottom:5px; color:var(--text); }
+  .mbig{ font-size:19px; font-weight:800; }
+  .count{ font-size:12.5px; margin-top:2px; font-weight:700; color:var(--muted2); }
+  .msub{ font-size:10.5px; color:#aab0b8; margin-top:6px; word-break:break-all; }
+  .chart{ width:100%; height:150px; display:block; }
+  .nextbtn{ margin-top:8px; width:100%; padding:9px; font-size:12.5px; font-weight:700; color:var(--blue); background:#eff4ff; border:1px solid #cfe0ff; border-radius:10px; cursor:pointer; }
+  .note{ font-size:11px; margin-top:6px; line-height:1.45; }
+  .caveat{ grid-column:1 / -1; font-size:10.5px; color:var(--muted); background:transparent; border:1px solid var(--border); border-radius:12px; padding:10px 12px; line-height:1.5; margin-top:2px; }
   .hidden{ display:none; }
-  @media (min-width:820px){
-    body{ padding:34px 24px 60px; }
-    .wrap{ max-width:600px; }
-    h1{ font-size:30px; }
-    #verdictCard .verdict{ font-size:50px; }
-  }
+  @media (min-width:680px){ body{ padding:18px 16px 30px; } .wrap{ max-width:820px; grid-template-columns:repeat(3,1fr); gap:10px; } h1{ font-size:22px; } }
+  @media (min-width:1060px){ .wrap{ max-width:1120px; grid-template-columns:repeat(4,1fr); } }
 </style>
 </head>
 <body>
@@ -97,7 +89,7 @@
     <div class="reason" id="impReason">Watching the first 3 minutes of the window.</div>
   </div>
 
-  <div class="card">
+  <div class="card wide">
     <div class="label">15 MIN DECISION READ (trade view)</div>
     <div class="alarmbar" id="pumpBar"></div>
     <div class="alarmbar" id="divBar"></div>
@@ -127,7 +119,7 @@
 
   <div class="section">Market and price</div>
 
-  <div class="card">
+  <div class="card wide">
     <div class="label">LIVE CHART (blended price vs 15 min target)</div>
     <canvas id="chart" class="chart"></canvas>
   </div>
@@ -201,6 +193,7 @@
 
   var sb = { pending: {}, completed: [], impulse: { pending: {}, completed: [] } }, sbStorageOk = true;
   var settledCache = [], settledPolled = false, lastSettledPoll = 0, pollingSettled = false;
+  var impulseFetching = {}, impulseTries = {};
 
   function el(id) { return document.getElementById(id); }
   function fmt(n, d) { if (d === undefined) d = 2; if (n === null || n === undefined || isNaN(n)) return "\u2014"; return Number(n).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }); }
@@ -254,16 +247,23 @@
 
   function sampleAt(tms) { if (!samples.length) return null; var best = null, bd = Infinity; for (var i = 0; i < samples.length; i++) { var d = Math.abs(samples[i].t - tms); if (d < bd) { bd = d; best = samples[i]; } } return bd <= 8000 ? best.p : null; }
   function impulseCompletedHas(tk) { for (var i = 0; i < sb.impulse.completed.length; i++) { if (sb.impulse.completed[i].ticker === tk) return true; } return false; }
-  function impulseMaybeFreeze(ticker, closeTs, threeMark, target, price, now) {
-    if (now < threeMark || now >= closeTs) return;
+  function impulseMaybeFreeze(ticker, closeTs, now) {
+    if (closeTs == null || isNaN(closeTs)) return;
+    var ws = closeTs - Q, threeMark = ws + 180000;
+    if (now < threeMark + 2000 || now >= closeTs) return;
     if (sb.impulse.pending[ticker] || impulseCompletedHas(ticker)) return;
-    var p3 = (now - threeMark <= 12000 && price != null) ? price : sampleAt(threeMark);
-    if (p3 == null || target == null) return;
-    var imp = p3 - target;
-    var side = imp >= 0 ? "yes" : "no";
-    var cost = side === "yes" ? kalshi.yesAsk : kalshi.noAsk;
-    sb.impulse.pending[ticker] = { ticker: ticker, closeTs: closeTs, side: side, cost: cost, size: Math.abs(imp), dir: (imp >= 0 ? "up" : "down"), frozenAt: now };
-    sbSave();
+    if (impulseFetching[ticker]) return;
+    impulseFetching[ticker] = true;
+    fetchJson(candleUrl(ws, threeMark + 60000), function (data) {
+      impulseFetching[ticker] = false;
+      if (!data || !data.length) { impulseTries[ticker] = (impulseTries[ticker] || 0) + 1; return; }
+      var openP = candleField(data, ws, 3), p3 = candleField(data, ws + 120000, 4);
+      if (openP == null || p3 == null) return;
+      var imp = p3 - openP, side = imp >= 0 ? "yes" : "no";
+      var cost = side === "yes" ? kalshi.yesAsk : kalshi.noAsk;
+      sb.impulse.pending[ticker] = { ticker: ticker, closeTs: closeTs, side: side, cost: cost, size: Math.abs(imp), dir: (imp >= 0 ? "up" : "down"), frozenAt: Date.now() };
+      sbSave(); scheduleRender();
+    });
   }
   function impulseFinalize() {
     var changed = false;
@@ -309,6 +309,9 @@
 
   function routeUrl(m, url) { if (m === 0) return url; if (m === 1) return "https://corsproxy.io/?url=" + encodeURIComponent(url); return "https://api.allorigins.win/raw?url=" + encodeURIComponent(url); }
   function fetchSeries(url, cb) { var order = workingMethod !== null ? [workingMethod, 0, 1, 2] : [0, 1, 2]; var seen = {}, queue = []; for (var i = 0; i < order.length; i++) { if (!seen[order[i]]) { seen[order[i]] = 1; queue.push(order[i]); } } var idx = 0; (function tryNext() { if (idx >= queue.length) { cb(null); return; } var m = queue[idx++]; fetch(routeUrl(m, url), { cache: "no-store" }).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (data) { if (data && data.markets) { workingMethod = m; cb(data.markets); } else tryNext(); }).catch(function () { tryNext(); }); })(); }
+  function fetchJson(url, cb) { var queue = [0, 1, 2], idx = 0; (function tryNext() { if (idx >= queue.length) { cb(null); return; } var m = queue[idx++]; fetch(routeUrl(m, url), { cache: "no-store" }).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (data) { if (data != null) cb(data); else tryNext(); }).catch(function () { tryNext(); }); })(); }
+  function candleUrl(startMs, endMs) { return "https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=60&start=" + new Date(startMs).toISOString() + "&end=" + new Date(endMs).toISOString(); }
+  function candleField(data, tms, idx) { var sec = Math.round(tms / 1000); for (var i = 0; i < data.length; i++) { if (Array.isArray(data[i]) && data[i][0] === sec) return data[i][idx]; } return null; }
   function pickActive(markets) { var now = Date.now(); var open = markets.filter(function (mk) { var ct = Date.parse(mk.close_time); return ct && ct > now; }); if (!open.length) return null; open.sort(function (a, b) { return Date.parse(a.close_time) - Date.parse(b.close_time); }); var minClose = Date.parse(open[0].close_time); var nearest = open.filter(function (mk) { return Date.parse(mk.close_time) === minClose; }); var ref = blended() || num(nearest[0].floor_strike) || 0; nearest.sort(function (a, b) { return Math.abs((num(a.floor_strike) || 0) - ref) - Math.abs((num(b.floor_strike) || 0) - ref); }); return nearest[0]; }
   function readMkt(mk, o) { o.closeTs = Date.parse(mk.close_time); o.ticker = mk.ticker; var bid = num(mk.yes_bid_dollars), ask = num(mk.yes_ask_dollars), last = num(mk.last_price_dollars); var mid = (bid !== null && ask !== null && (bid > 0 || ask > 0)) ? (bid + ask) / 2 : last; o.upPct = mid !== null ? Math.round(mid * 100) : null; o.yesAsk = ask !== null ? Math.round(ask * 100) : o.upPct; var noAsk = num(mk.no_ask_dollars); o.noAsk = noAsk !== null ? Math.round(noAsk * 100) : (o.upPct !== null ? 100 - o.upPct : null); }
 
@@ -514,8 +517,8 @@
       iD.textContent = "warming up"; iD.style.color = GREY;
       iR.textContent = "Waiting for the live market to measure the first 3 minutes.";
     } else {
-      var ws = closeTs - Q, tm = ws + 180000;
-      try { impulseMaybeFreeze(kalshi.ticker, closeTs, tm, tgt, price, now); } catch (e) {}
+      var ws = kalshi.closeTs - Q, tm = ws + 180000;
+      try { impulseMaybeFreeze(kalshi.ticker, kalshi.closeTs, now); } catch (e) {}
       var irec = sb.impulse.pending[kalshi.ticker] || null;
       if (!irec) { for (var ii = sb.impulse.completed.length - 1; ii >= 0; ii--) { if (sb.impulse.completed[ii].ticker === kalshi.ticker) { irec = sb.impulse.completed[ii]; break; } } }
       if (now < tm) {
@@ -528,9 +531,12 @@
         iD.textContent = iUp ? "Momentum: Up (Yes)" : "Momentum: Down (No)";
         iD.style.color = iUp ? YES : NO;
         iR.textContent = "First 3 minutes went " + irec.dir + " $" + fmt(irec.size, 0) + ". The crowd saw the same push, so Kalshi has already priced it in, this is not a cheap edge. Its own record is on the scoreboard below.";
+      } else if (impulseTries[kalshi.ticker] && impulseTries[kalshi.ticker] >= 6) {
+        iD.textContent = "Opening data unavailable"; iD.style.color = GREY;
+        iR.textContent = "Could not pull this window's first 3 minutes from the exchange. It will try again next window.";
       } else {
-        iD.textContent = "Missed this one"; iD.style.color = GREY;
-        iR.textContent = "Page opened after the 3 minute mark, so this window's opening move could not be measured. It will catch the next one.";
+        iD.textContent = "Measuring"; iD.style.color = GREY;
+        iR.textContent = "Reading this window's first 3 minutes from the exchange, one moment.";
       }
     }
     var vT = el("verdictText"), vW = el("verdictWhy"), vC = el("verdictCard");
@@ -550,10 +556,32 @@
     var pb = el("pumpBar"), db = el("divBar"), dT = el("dispText"), dR = el("dispReason"), dS = el("dispStats");
     pb.style.display = pump ? "block" : "none"; if (pump) pb.textContent = "PUMP, volatility about $" + fmt(volPerMin, 0) + " a minute. Stand down.";
     db.style.display = divAlarm ? "block" : "none"; if (divAlarm) db.textContent = "EXCHANGES DISAGREE, " + divText;
-    function statsBlock(extra) { return "Model: Up " + pctTxt(pUp) + ", Down " + pctTxt(1 - pUp) + "   \u00b7   Kalshi: Up " + (kalshi.upPct != null ? kalshi.upPct + "%" : "\u2014") + (extra ? ("\n" + extra) : "") + (safeCushion != null && actualCushion != null ? ("\nSafe cushion now about $" + fmt(safeCushion, 0) + ", you have $" + fmt(actualCushion, 0)) : "") + (volPerMin != null ? ("\nBTC swinging about $" + fmt(volPerMin, 0) + " a minute right now") : ""); }
+    function statsBlock(valueLine) {
+      var L = [];
+      L.push("This tool's odds: Up " + pctTxt(pUp) + ", Down " + pctTxt(1 - pUp));
+      L.push("Market odds from price: Up " + (kalshi.upPct != null ? kalshi.upPct + "%" : "\u2014") + ", Down " + (kalshi.upPct != null ? (100 - kalshi.upPct) + "%" : "\u2014"));
+      if (valueLine) L.push(valueLine);
+      if (safeCushion != null && actualCushion != null) L.push("Safe gap needed about $" + fmt(safeCushion, 0) + ", you have $" + fmt(actualCushion, 0) + " now");
+      if (volPerMin != null) L.push("BTC speed about $" + fmt(volPerMin, 0) + " a minute");
+      L.push("How to read this: the tool's odds are its own estimate, the market odds come straight from the price. A side shows a plus edge when it looks cheaper than the tool thinks. Keep in mind the market sees more than this tool does, the full order book and everyone's information, so a plus edge is more often the tool being off than a real mispricing. The safe gap is how far price must sit from the target to be hard to flip before close. Treat any plus edge as a maybe, not a green light, and most of the time sitting out is the right call.");
+      return L.join("\n");
+    }
     if (pUp == null || kalshi.yesAsk == null || kalshi.noAsk == null) { dT.textContent = "warming up"; dT.style.color = GREY; dR.textContent = (sig120 == null && sig30 == null) ? "Gathering a few seconds of price to read volatility." : "Waiting on the Kalshi market price."; dS.textContent = ""; }
-    else if (pump || divAlarm) { dT.textContent = "Sit it out"; dT.style.color = AMBER; dR.textContent = divAlarm ? "The exchanges are out of line, the footprint of a single venue push or a lagging feed. Stand down, this is the setup to stay out of." : "Volatility is spiking. Cushions vanish fast and the read is unreliable. Stand down until it calms."; dS.textContent = statsBlock(""); }
-    else { var de = disposition(pUp, kalshi.yesAsk, kalshi.noAsk, secsLeft); var cushionSafe = (safeCushion != null && actualCushion != null) ? (actualCushion >= safeCushion) : null; dT.textContent = de.disp; dT.style.color = de.color; dR.textContent = de.reason; dS.textContent = statsBlock("Value: Up " + (de.evUp >= 0 ? "+" : "") + Math.round(de.evUp) + "c, Down " + (de.evDown >= 0 ? "+" : "") + Math.round(de.evDown) + "c after fees" + (cushionSafe != null ? (cushionSafe ? "   (cushion pull proof)" : "   (cushion not enough yet)") : "")); }
+    else if (pump || divAlarm) { dT.textContent = "Sit out, too unstable"; dT.style.color = AMBER; dR.textContent = divAlarm ? "The exchanges are out of line, the footprint of a single venue push or a lagging feed. Stand down, this is the setup to stay out of." : "Volatility is spiking. Cushions vanish fast and the read is unreliable. Stand down until it calms."; dS.textContent = statsBlock(""); }
+    else {
+      var de = disposition(pUp, kalshi.yesAsk, kalshi.noAsk, secsLeft);
+      var cushionSafe = (safeCushion != null && actualCushion != null) ? (actualCushion >= safeCushion) : null;
+      var bestEv = Math.max(de.evUp, de.evDown);
+      var vSide = de.evUp >= de.evDown ? "Up" : "Down";
+      var vSideLong = vSide === "Up" ? "Up (Yes)" : "Down (No)";
+      var realGo = bestEv >= 5 && cushionSafe === true;
+      var dHead, dCol, dWhy;
+      if (realGo) { dHead = "Value on " + vSideLong; dCol = vSide === "Up" ? YES : NO; dWhy = "Model has " + vSideLong + " a little cheap, edge about +" + Math.round(bestEv) + "c, and your gap is past the safe gap. This is the cleanest setup this tile shows. An edge this small can still wash out, so keep size small."; }
+      else if (bestEv >= 5) { dHead = "Slight value on " + vSide + ", still sit out"; dCol = AMBER; dWhy = de.reason + (cushionSafe === false ? " On top of that the gap is smaller than the safe gap, so it is not safe yet." : ""); }
+      else { dHead = "No edge, sit out"; dCol = AMBER; dWhy = de.reason; }
+      dT.textContent = dHead; dT.style.color = dCol; dR.textContent = dWhy;
+      dS.textContent = statsBlock("Edge after fees, per $1 contract: Up " + (de.evUp >= 0 ? "+" : "") + Math.round(de.evUp) + "c, Down " + (de.evDown >= 0 ? "+" : "") + Math.round(de.evDown) + "c" + (cushionSafe != null ? (cushionSafe ? " (gap is enough)" : " (gap not enough yet)") : ""));
+    }
 
     var hD = el("hrDisp"), hR = el("hrReason"), hS = el("hrStats"), hC = el("hrCard");
     if (hourly.target == null) {
