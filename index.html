@@ -66,6 +66,15 @@
     <div class="reason" id="verdictWhy">Gathering price and market data.</div>
   </div>
 
+  <div class="card wide">
+    <div class="label">15 MIN DECISION READ (trade view)</div>
+    <div class="alarmbar" id="pumpBar"></div>
+    <div class="alarmbar" id="divBar"></div>
+    <div class="disp" id="dispText" style="color:#9ca3af;">warming up</div>
+    <div class="reason" id="dispReason">Gathering price and market data.</div>
+    <div class="stat" id="dispStats"></div>
+  </div>
+
   <div class="card answer" id="answerCard">
     <div class="label" id="answerLabel">15 MIN LIVE READ (price vs target)</div>
     <div class="word" id="answerWord">&mdash;</div>
@@ -87,15 +96,6 @@
     <div class="label">OPENING IMPULSE (first 3 minutes, momentum test)</div>
     <div class="disp" id="impDisp" style="color:#9ca3af;">warming up</div>
     <div class="reason" id="impReason">Watching the first 3 minutes of the window.</div>
-  </div>
-
-  <div class="card wide">
-    <div class="label">15 MIN DECISION READ (trade view)</div>
-    <div class="alarmbar" id="pumpBar"></div>
-    <div class="alarmbar" id="divBar"></div>
-    <div class="disp" id="dispText" style="color:#9ca3af;">warming up</div>
-    <div class="reason" id="dispReason">Gathering price and market data.</div>
-    <div class="stat" id="dispStats"></div>
   </div>
 
   <div class="card vcard" id="hrCard">
@@ -284,9 +284,9 @@
     if (changed) sbSave();
   }
 
-  function connectCoinbase() { try { var w = new WebSocket("wss://ws-feed.exchange.coinbase.com"); w.onopen = function () { w.send(JSON.stringify({ type: "subscribe", product_ids: ["BTC-USD"], channels: ["ticker"] })); }; w.onmessage = function (ev) { var d = JSON.parse(ev.data); if (d.type === "ticker" && d.price) { feeds.coinbase.p = parseFloat(d.price); feeds.coinbase.t = Date.now(); scheduleRender(); } }; w.onclose = function () { setTimeout(connectCoinbase, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
-  function connectKraken() { try { var w = new WebSocket("wss://ws.kraken.com/v2"); w.onopen = function () { w.send(JSON.stringify({ method: "subscribe", params: { channel: "ticker", symbol: ["BTC/USD"] } })); }; w.onmessage = function (ev) { var d = JSON.parse(ev.data); if (d.channel === "ticker" && d.data && d.data[0] && d.data[0].last != null) { feeds.kraken.p = parseFloat(d.data[0].last); feeds.kraken.t = Date.now(); scheduleRender(); } }; w.onclose = function () { setTimeout(connectKraken, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
-  function connectBitstamp() { try { var w = new WebSocket("wss://ws.bitstamp.net"); w.onopen = function () { w.send(JSON.stringify({ event: "bts:subscribe", data: { channel: "live_trades_btcusd" } })); }; w.onmessage = function (ev) { var d = JSON.parse(ev.data); if (d.event === "trade" && d.data && d.data.price) { feeds.bitstamp.p = parseFloat(d.data.price); feeds.bitstamp.t = Date.now(); scheduleRender(); } }; w.onclose = function () { setTimeout(connectBitstamp, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
+  function connectCoinbase() { try { var w = new WebSocket("wss://ws-feed.exchange.coinbase.com"); feeds.coinbase.ws = w; w.onopen = function () { w.send(JSON.stringify({ type: "subscribe", product_ids: ["BTC-USD"], channels: ["ticker"] })); }; w.onmessage = function (ev) { var d = JSON.parse(ev.data); if (d.type === "ticker" && d.price) { feeds.coinbase.p = parseFloat(d.price); feeds.coinbase.t = Date.now(); scheduleRender(); } }; w.onclose = function () { setTimeout(connectCoinbase, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
+  function connectKraken() { try { var w = new WebSocket("wss://ws.kraken.com/v2"); feeds.kraken.ws = w; w.onopen = function () { w.send(JSON.stringify({ method: "subscribe", params: { channel: "ticker", symbol: ["BTC/USD"] } })); }; w.onmessage = function (ev) { var d = JSON.parse(ev.data); if (d.channel === "ticker" && d.data && d.data[0] && d.data[0].last != null) { feeds.kraken.p = parseFloat(d.data[0].last); feeds.kraken.t = Date.now(); scheduleRender(); } }; w.onclose = function () { setTimeout(connectKraken, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
+  function connectBitstamp() { try { var w = new WebSocket("wss://ws.bitstamp.net"); feeds.bitstamp.ws = w; w.onopen = function () { w.send(JSON.stringify({ event: "bts:subscribe", data: { channel: "live_trades_btcusd" } })); }; w.onmessage = function (ev) { var d = JSON.parse(ev.data); if (d.event === "trade" && d.data && d.data.price) { feeds.bitstamp.p = parseFloat(d.data.price); feeds.bitstamp.t = Date.now(); scheduleRender(); } }; w.onclose = function () { setTimeout(connectBitstamp, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
   function freshFeeds() { var now = Date.now(), a = []; ["coinbase", "kraken", "bitstamp"].forEach(function (k) { var f = feeds[k]; if (f.p != null && now - f.t <= FRESH) a.push({ k: k, p: f.p }); }); return a; }
   function blendedRaw() { var a = freshFeeds().map(function (x) { return x.p; }); if (!a.length) return null; a.sort(function (x, y) { return x - y; }); return a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2; }
   function blended() { if (manualPriceMode) { var v = el("manualInput").value; return v === "" ? null : parseFloat(v); } var raw = blendedRaw(); if (raw != null) { lastBlended = raw; lastBlendedT = Date.now(); return raw; } if (lastBlended != null && Date.now() - lastBlendedT <= HOLD) return lastBlended; return null; }
@@ -308,8 +308,9 @@
   el("sbReset").addEventListener("click", function () { if (window.confirm("Reset the scoreboard record? This cannot be undone.")) { sb = { pending: {}, completed: [], impulse: { pending: {}, completed: [] } }; sbSave(); scheduleRender(); } });
 
   function routeUrl(m, url) { if (m === 0) return url; if (m === 1) return "https://corsproxy.io/?url=" + encodeURIComponent(url); return "https://api.allorigins.win/raw?url=" + encodeURIComponent(url); }
-  function fetchSeries(url, cb) { var order = workingMethod !== null ? [workingMethod, 0, 1, 2] : [0, 1, 2]; var seen = {}, queue = []; for (var i = 0; i < order.length; i++) { if (!seen[order[i]]) { seen[order[i]] = 1; queue.push(order[i]); } } var idx = 0; (function tryNext() { if (idx >= queue.length) { cb(null); return; } var m = queue[idx++]; fetch(routeUrl(m, url), { cache: "no-store" }).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (data) { if (data && data.markets) { workingMethod = m; cb(data.markets); } else tryNext(); }).catch(function () { tryNext(); }); })(); }
-  function fetchJson(url, cb) { var queue = [0, 1, 2], idx = 0; (function tryNext() { if (idx >= queue.length) { cb(null); return; } var m = queue[idx++]; fetch(routeUrl(m, url), { cache: "no-store" }).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (data) { if (data != null) cb(data); else tryNext(); }).catch(function () { tryNext(); }); })(); }
+  function fetchT(url, ms) { var ctrl = new AbortController(); var to = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, ms); return fetch(url, { cache: "no-store", signal: ctrl.signal }).then(function (r) { clearTimeout(to); return r; }, function (e) { clearTimeout(to); throw e; }); }
+  function fetchSeries(url, cb) { var order = workingMethod !== null ? [workingMethod, 0, 1, 2] : [0, 1, 2]; var seen = {}, queue = []; for (var i = 0; i < order.length; i++) { if (!seen[order[i]]) { seen[order[i]] = 1; queue.push(order[i]); } } var idx = 0; (function tryNext() { if (idx >= queue.length) { cb(null); return; } var m = queue[idx++]; fetchT(routeUrl(m, url), 6500).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (data) { if (data && data.markets) { workingMethod = m; cb(data.markets); } else tryNext(); }).catch(function () { tryNext(); }); })(); }
+  function fetchJson(url, cb) { var queue = [0, 1, 2], idx = 0; (function tryNext() { if (idx >= queue.length) { cb(null); return; } var m = queue[idx++]; fetchT(routeUrl(m, url), 8000).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (data) { if (data != null) cb(data); else tryNext(); }).catch(function () { tryNext(); }); })(); }
   function candleUrl(startMs, endMs) { return "https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=60&start=" + new Date(startMs).toISOString() + "&end=" + new Date(endMs).toISOString(); }
   function candleField(data, tms, idx) { var sec = Math.round(tms / 1000); for (var i = 0; i < data.length; i++) { if (Array.isArray(data[i]) && data[i][0] === sec) return data[i][idx]; } return null; }
   function pickActive(markets) { var now = Date.now(); var open = markets.filter(function (mk) { var ct = Date.parse(mk.close_time); return ct && ct > now; }); if (!open.length) return null; open.sort(function (a, b) { return Date.parse(a.close_time) - Date.parse(b.close_time); }); var minClose = Date.parse(open[0].close_time); var nearest = open.filter(function (mk) { return Date.parse(mk.close_time) === minClose; }); var ref = blended() || num(nearest[0].floor_strike) || 0; nearest.sort(function (a, b) { return Math.abs((num(a.floor_strike) || 0) - ref) - Math.abs((num(b.floor_strike) || 0) - ref); }); return nearest[0]; }
@@ -343,6 +344,8 @@
   function effTarget() { if (!autoOn) { var v = el("targetInput").value; return v === "" ? null : parseFloat(v); } if (targetSource === "live") return kalshi.liveTarget != null ? kalshi.liveTarget : cachedTarget; return cachedTarget != null ? cachedTarget : kalshi.liveTarget; }
 
   setInterval(function () {
+    var nowW = Date.now();
+    ["coinbase", "kraken", "bitstamp"].forEach(function (k) { var f = feeds[k]; if (f.ws && f.ws.readyState === 1 && f.t > 0 && nowW - f.t > 22000) { try { f.ws.close(); } catch (e) {} } });
     var p = blended(); if (p !== null && !isNaN(p)) { var t = Date.now(); samples.push({ t: t, p: p }); samples = samples.filter(function (s) { return s.t >= t - 1300000; }); }
     var fs0 = feedSpread(); if (fs0) { spreadHist.push({ t: Date.now(), s: fs0.spread }); spreadHist = spreadHist.filter(function (x) { return x.t >= Date.now() - 90000; }); }
     if (!manualPriceMode && !promptedManual && Date.now() > startedAt + 9000 && blended() === null) { promptedManual = true; goManualPrice("No exchange feed reached your phone. Switched to manual, type the price in."); }
@@ -558,29 +561,20 @@
     db.style.display = divAlarm ? "block" : "none"; if (divAlarm) db.textContent = "EXCHANGES DISAGREE, " + divText;
     function statsBlock(valueLine) {
       var L = [];
-      L.push("This tool's odds: Up " + pctTxt(pUp) + ", Down " + pctTxt(1 - pUp));
-      L.push("Market odds from price: Up " + (kalshi.upPct != null ? kalshi.upPct + "%" : "\u2014") + ", Down " + (kalshi.upPct != null ? (100 - kalshi.upPct) + "%" : "\u2014"));
+      L.push("This tool's odds: Up " + pctTxt(pUp) + ", Down " + pctTxt(1 - pUp) + "   \u00b7   Kalshi: Up " + (kalshi.upPct != null ? kalshi.upPct + "%" : "\u2014"));
       if (valueLine) L.push(valueLine);
-      if (safeCushion != null && actualCushion != null) L.push("Safe gap needed about $" + fmt(safeCushion, 0) + ", you have $" + fmt(actualCushion, 0) + " now");
-      if (volPerMin != null) L.push("BTC speed about $" + fmt(volPerMin, 0) + " a minute");
-      L.push("How to read this: the tool's odds are its own estimate, the market odds come straight from the price. A side shows a plus edge when it looks cheaper than the tool thinks. Keep in mind the market sees more than this tool does, the full order book and everyone's information, so a plus edge is more often the tool being off than a real mispricing. The safe gap is how far price must sit from the target to be hard to flip before close. Treat any plus edge as a maybe, not a green light, and most of the time sitting out is the right call.");
+      if (safeCushion != null && actualCushion != null) L.push("Safe cushion now about $" + fmt(safeCushion, 0) + ", you have $" + fmt(actualCushion, 0));
+      if (volPerMin != null) L.push("BTC swinging about $" + fmt(volPerMin, 0) + " a minute right now");
+      L.push("How to read this: the tool's odds are its own estimate, the Kalshi odds come straight from its price. A side shows a plus edge when it looks cheaper than the tool thinks. The safe cushion is how far price must sit from the target to be hard to flip before close. Keep in mind Kalshi sees more than this tool does, the full order book and everyone's information, so a plus edge is more often the tool being off than a real mispricing. Treat any plus edge as a maybe, not a green light, and most of the time sitting out is the right call.");
       return L.join("\n");
     }
     if (pUp == null || kalshi.yesAsk == null || kalshi.noAsk == null) { dT.textContent = "warming up"; dT.style.color = GREY; dR.textContent = (sig120 == null && sig30 == null) ? "Gathering a few seconds of price to read volatility." : "Waiting on the Kalshi market price."; dS.textContent = ""; }
-    else if (pump || divAlarm) { dT.textContent = "Sit out, too unstable"; dT.style.color = AMBER; dR.textContent = divAlarm ? "The exchanges are out of line, the footprint of a single venue push or a lagging feed. Stand down, this is the setup to stay out of." : "Volatility is spiking. Cushions vanish fast and the read is unreliable. Stand down until it calms."; dS.textContent = statsBlock(""); }
+    else if (pump || divAlarm) { dT.textContent = "Sit it out"; dT.style.color = AMBER; dR.textContent = divAlarm ? "The exchanges are out of line, the footprint of a single venue push or a lagging feed. Stand down, this is the setup to stay out of." : "Volatility is spiking. Cushions vanish fast and the read is unreliable. Stand down until it calms."; dS.textContent = statsBlock(""); }
     else {
       var de = disposition(pUp, kalshi.yesAsk, kalshi.noAsk, secsLeft);
       var cushionSafe = (safeCushion != null && actualCushion != null) ? (actualCushion >= safeCushion) : null;
-      var bestEv = Math.max(de.evUp, de.evDown);
-      var vSide = de.evUp >= de.evDown ? "Up" : "Down";
-      var vSideLong = vSide === "Up" ? "Up (Yes)" : "Down (No)";
-      var realGo = bestEv >= 5 && cushionSafe === true;
-      var dHead, dCol, dWhy;
-      if (realGo) { dHead = "Value on " + vSideLong; dCol = vSide === "Up" ? YES : NO; dWhy = "Model has " + vSideLong + " a little cheap, edge about +" + Math.round(bestEv) + "c, and your gap is past the safe gap. This is the cleanest setup this tile shows. An edge this small can still wash out, so keep size small."; }
-      else if (bestEv >= 5) { dHead = "Slight value on " + vSide + ", still sit out"; dCol = AMBER; dWhy = de.reason + (cushionSafe === false ? " On top of that the gap is smaller than the safe gap, so it is not safe yet." : ""); }
-      else { dHead = "No edge, sit out"; dCol = AMBER; dWhy = de.reason; }
-      dT.textContent = dHead; dT.style.color = dCol; dR.textContent = dWhy;
-      dS.textContent = statsBlock("Edge after fees, per $1 contract: Up " + (de.evUp >= 0 ? "+" : "") + Math.round(de.evUp) + "c, Down " + (de.evDown >= 0 ? "+" : "") + Math.round(de.evDown) + "c" + (cushionSafe != null ? (cushionSafe ? " (gap is enough)" : " (gap not enough yet)") : ""));
+      dT.textContent = de.disp; dT.style.color = de.color; dR.textContent = de.reason;
+      dS.textContent = statsBlock("Value: Up " + (de.evUp >= 0 ? "+" : "") + Math.round(de.evUp) + "c, Down " + (de.evDown >= 0 ? "+" : "") + Math.round(de.evDown) + "c after fees" + (cushionSafe != null ? (cushionSafe ? " (cushion is enough)" : " (cushion not enough yet)") : ""));
     }
 
     var hD = el("hrDisp"), hR = el("hrReason"), hS = el("hrStats"), hC = el("hrCard");
