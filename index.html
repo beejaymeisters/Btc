@@ -72,6 +72,12 @@
     <div class="stat" id="gsStats"></div>
   </div>
 
+  <div class="card" id="impCard">
+    <div class="label">OPENING IMPULSE (first 3 minutes, momentum test)</div>
+    <div class="disp" id="impDisp" style="color:#9ca3af;">warming up</div>
+    <div class="reason" id="impReason">Watching the first 3 minutes of the window.</div>
+  </div>
+
   <div class="card">
     <div class="label">15 MIN DECISION READ (trade view)</div>
     <div class="alarmbar" id="pumpBar"></div>
@@ -170,7 +176,7 @@
   var timerSource = "local", targetSource = "locked";
   var workingMethod = null, lastPoll = 0, polling = false, lastPollHr = 0, pollingHr = false, startedAt = Date.now(), lastChartDraw = 0;
 
-  var sb = { pending: {}, completed: [] }, sbStorageOk = true;
+  var sb = { pending: {}, completed: [], impulse: { pending: {}, completed: [] } }, sbStorageOk = true;
   var settledCache = [], settledPolled = false, lastSettledPoll = 0, pollingSettled = false;
 
   function el(id) { return document.getElementById(id); }
@@ -189,7 +195,7 @@
   function scheduleRender() { if (rafPending) return; rafPending = true; requestAnimationFrame(function () { rafPending = false; render(); drawChart(); }); }
 
   // scoreboard storage
-  function sbLoad() { try { var raw = localStorage.getItem(SB_KEY); if (raw) { var o = JSON.parse(raw); sb.pending = o.pending || {}; sb.completed = o.completed || []; } } catch (e) { sbStorageOk = false; } }
+  function sbLoad() { try { var raw = localStorage.getItem(SB_KEY); if (raw) { var o = JSON.parse(raw); sb.pending = o.pending || {}; sb.completed = o.completed || []; sb.impulse = o.impulse || { pending: {}, completed: [] }; if (!sb.impulse.pending) sb.impulse.pending = {}; if (!sb.impulse.completed) sb.impulse.completed = []; } } catch (e) { sbStorageOk = false; } }
   function sbSave() { try { localStorage.setItem(SB_KEY, JSON.stringify(sb)); } catch (e) { sbStorageOk = false; } }
   function classify(vt) { if (vt === "YES") return { kind: "locked", side: "yes" }; if (vt === "NO") return { kind: "locked", side: "no" }; if (vt.indexOf("Best guess Yes") === 0) return { kind: "guess", side: "yes" }; if (vt.indexOf("Best guess No") === 0) return { kind: "guess", side: "no" }; if (vt.indexOf("Coin toss") === 0) return { kind: "toss", side: null }; return { kind: "sitout", side: null }; }
   function sbCompletedHas(tk) { for (var i = 0; i < sb.completed.length; i++) { if (sb.completed[i].ticker === tk) return true; } return false; }
@@ -223,6 +229,38 @@
     if (changed) sbSave();
   }
 
+  function sampleAt(tms) { if (!samples.length) return null; var best = null, bd = Infinity; for (var i = 0; i < samples.length; i++) { var d = Math.abs(samples[i].t - tms); if (d < bd) { bd = d; best = samples[i]; } } return bd <= 8000 ? best.p : null; }
+  function impulseCompletedHas(tk) { for (var i = 0; i < sb.impulse.completed.length; i++) { if (sb.impulse.completed[i].ticker === tk) return true; } return false; }
+  function impulseMaybeFreeze(ticker, closeTs, threeMark, target, price, now) {
+    if (now < threeMark || now >= closeTs) return;
+    if (sb.impulse.pending[ticker] || impulseCompletedHas(ticker)) return;
+    var p3 = (now - threeMark <= 12000 && price != null) ? price : sampleAt(threeMark);
+    if (p3 == null || target == null) return;
+    var imp = p3 - target;
+    var side = imp >= 0 ? "yes" : "no";
+    var cost = side === "yes" ? kalshi.yesAsk : kalshi.noAsk;
+    sb.impulse.pending[ticker] = { ticker: ticker, closeTs: closeTs, side: side, cost: cost, size: Math.abs(imp), dir: (imp >= 0 ? "up" : "down"), frozenAt: now };
+    sbSave();
+  }
+  function impulseFinalize() {
+    var changed = false;
+    for (var tk in sb.impulse.pending) {
+      if (!sb.impulse.pending.hasOwnProperty(tk)) continue;
+      var rec = sb.impulse.pending[tk];
+      if (Date.now() > rec.closeTs + 3 * 3600 * 1000) { delete sb.impulse.pending[tk]; changed = true; continue; }
+      if (Date.now() < rec.closeTs + 3000) continue;
+      var res = settledResultFor(tk);
+      if (res == null) continue;
+      var correct = (rec.side === res);
+      var pl = null;
+      if (rec.cost != null) { pl = (res === rec.side ? (100 - rec.cost) : -rec.cost) - feeCents(rec.cost / 100); }
+      sb.impulse.completed.push({ ticker: tk, closeTs: rec.closeTs, side: rec.side, result: res, correct: correct, pl: pl, size: rec.size, dir: rec.dir });
+      delete sb.impulse.pending[tk]; changed = true;
+    }
+    if (sb.impulse.completed.length > 800) sb.impulse.completed = sb.impulse.completed.slice(-800);
+    if (changed) sbSave();
+  }
+
   function connectCoinbase() { try { var w = new WebSocket("wss://ws-feed.exchange.coinbase.com"); w.onopen = function () { w.send(JSON.stringify({ type: "subscribe", product_ids: ["BTC-USD"], channels: ["ticker"] })); }; w.onmessage = function (ev) { var d = JSON.parse(ev.data); if (d.type === "ticker" && d.price) { feeds.coinbase.p = parseFloat(d.price); feeds.coinbase.t = Date.now(); scheduleRender(); } }; w.onclose = function () { setTimeout(connectCoinbase, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
   function connectKraken() { try { var w = new WebSocket("wss://ws.kraken.com/v2"); w.onopen = function () { w.send(JSON.stringify({ method: "subscribe", params: { channel: "ticker", symbol: ["BTC/USD"] } })); }; w.onmessage = function (ev) { var d = JSON.parse(ev.data); if (d.channel === "ticker" && d.data && d.data[0] && d.data[0].last != null) { feeds.kraken.p = parseFloat(d.data[0].last); feeds.kraken.t = Date.now(); scheduleRender(); } }; w.onclose = function () { setTimeout(connectKraken, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
   function connectBitstamp() { try { var w = new WebSocket("wss://ws.bitstamp.net"); w.onopen = function () { w.send(JSON.stringify({ event: "bts:subscribe", data: { channel: "live_trades_btcusd" } })); }; w.onmessage = function (ev) { var d = JSON.parse(ev.data); if (d.event === "trade" && d.data && d.data.price) { feeds.bitstamp.p = parseFloat(d.data.price); feeds.bitstamp.t = Date.now(); scheduleRender(); } }; w.onclose = function () { setTimeout(connectBitstamp, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
@@ -244,7 +282,7 @@
   function effCloseTs() { if (timerSource === "kalshi" && kalshi.ok && kalshi.closeTs) return kalshi.closeTs; if (!autoOn) { var v = el("closeInput").value.trim(); if (!/^\d{1,2}:\d{2}$/.test(v)) return localClose(); var p = v.split(":"); var h = parseInt(p[0], 10), m = parseInt(p[1], 10); if (h > 23 || m > 59) return localClose(); var d = new Date(); d.setHours(h, m, 0, 0); if (d.getTime() < Date.now() - 60000) d.setDate(d.getDate() + 1); return d.getTime(); } return localClose(); }
   el("timerBtn").addEventListener("click", function () { timerSource = timerSource === "local" ? "kalshi" : "local"; scheduleRender(); });
   el("targetBtn").addEventListener("click", function () { targetSource = targetSource === "locked" ? "live" : "locked"; scheduleRender(); });
-  el("sbReset").addEventListener("click", function () { if (window.confirm("Reset the scoreboard record? This cannot be undone.")) { sb = { pending: {}, completed: [] }; sbSave(); scheduleRender(); } });
+  el("sbReset").addEventListener("click", function () { if (window.confirm("Reset the scoreboard record? This cannot be undone.")) { sb = { pending: {}, completed: [], impulse: { pending: {}, completed: [] } }; sbSave(); scheduleRender(); } });
 
   function routeUrl(m, url) { if (m === 0) return url; if (m === 1) return "https://corsproxy.io/?url=" + encodeURIComponent(url); return "https://api.allorigins.win/raw?url=" + encodeURIComponent(url); }
   function fetchSeries(url, cb) { var order = workingMethod !== null ? [workingMethod, 0, 1, 2] : [0, 1, 2]; var seen = {}, queue = []; for (var i = 0; i < order.length; i++) { if (!seen[order[i]]) { seen[order[i]] = 1; queue.push(order[i]); } } var idx = 0; (function tryNext() { if (idx >= queue.length) { cb(null); return; } var m = queue[idx++]; fetch(routeUrl(m, url), { cache: "no-store" }).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (data) { if (data && data.markets) { workingMethod = m; cb(data.markets); } else tryNext(); }).catch(function () { tryNext(); }); })(); }
@@ -266,6 +304,7 @@
         arr.sort(function (a, b) { return b.closeTs - a.closeTs; });
         settledCache = arr;
         try { sbFinalize(); } catch (e) {}
+        try { impulseFinalize(); } catch (e) {}
       }
       scheduleRender();
     });
@@ -278,7 +317,7 @@
   function effTarget() { if (!autoOn) { var v = el("targetInput").value; return v === "" ? null : parseFloat(v); } if (targetSource === "live") return kalshi.liveTarget != null ? kalshi.liveTarget : cachedTarget; return cachedTarget != null ? cachedTarget : kalshi.liveTarget; }
 
   setInterval(function () {
-    var p = blended(); if (p !== null && !isNaN(p)) { var t = Date.now(); samples.push({ t: t, p: p }); samples = samples.filter(function (s) { return s.t >= t - 200000; }); }
+    var p = blended(); if (p !== null && !isNaN(p)) { var t = Date.now(); samples.push({ t: t, p: p }); samples = samples.filter(function (s) { return s.t >= t - 1300000; }); }
     var fs0 = feedSpread(); if (fs0) { spreadHist.push({ t: Date.now(), s: fs0.spread }); spreadHist = spreadHist.filter(function (x) { return x.t >= Date.now() - 90000; }); }
     if (!manualPriceMode && !promptedManual && Date.now() > startedAt + 9000 && blended() === null) { promptedManual = true; goManualPrice("No exchange feed reached your phone. Switched to manual, type the price in."); }
     var cts = effCloseTs(); var sLeft = cts !== null ? (cts - Date.now()) / 1000 : null; var interval = (sLeft !== null && sLeft <= 90) ? 2000 : 6000; if (!userForcedManual && Date.now() - lastPoll >= interval) pollKalshi();
@@ -323,6 +362,8 @@
     var lines = [];
     lines.push("Locked calls, " + (lockN ? (lockW + " of " + lockN + " right, " + Math.round(lockW / lockN * 100) + "%, P/L " + plTxt(lockPL) + " per contract") : "none yet"));
     lines.push("Best guess calls, " + (gN ? (gW + " of " + gN + " right, " + Math.round(gW / gN * 100) + "%, P/L " + plTxt(gPL) + " per contract") : "none yet"));
+    var ic = sb.impulse.completed, iN = ic.length, iW = 0, iPL = 0; for (var ij = 0; ij < ic.length; ij++) { if (ic[ij].correct) iW++; iPL += (ic[ij].pl || 0); } var iPend = 0; for (var ik in sb.impulse.pending) { if (sb.impulse.pending.hasOwnProperty(ik)) iPend++; }
+    lines.push("Opening impulse calls, " + (iN ? (iW + " of " + iN + " right, " + Math.round(iW / iN * 100) + "%, P/L " + plTxt(iPL) + " per contract") : "none yet") + (iPend ? (". Waiting to settle, " + iPend) : ""));
     lines.push("Stood aside, " + aside + " times. Waiting to settle, " + pend);
     lines.push("Locked should sit near 100% and pay almost nothing. Best guess should sit near 50% and bleed after fees. Let the record decide, not a feeling.");
     if (!sbStorageOk) lines.push("Heads up, this browser is not saving the record, it will reset on reload.");
@@ -444,6 +485,31 @@
       gSt.textContent = lines.join("\n");
     }
 
+    // opening impulse, its own card and its own tracked call
+    var iD = el("impDisp"), iR = el("impReason");
+    if (!autoOn || !kalshi.ticker || closeTs == null || !haveTarget) {
+      iD.textContent = "warming up"; iD.style.color = GREY;
+      iR.textContent = "Waiting for the live market to measure the first 3 minutes.";
+    } else {
+      var ws = closeTs - Q, tm = ws + 180000;
+      try { impulseMaybeFreeze(kalshi.ticker, closeTs, tm, tgt, price, now); } catch (e) {}
+      var irec = sb.impulse.pending[kalshi.ticker] || null;
+      if (!irec) { for (var ii = sb.impulse.completed.length - 1; ii >= 0; ii--) { if (sb.impulse.completed[ii].ticker === kalshi.ticker) { irec = sb.impulse.completed[ii]; break; } } }
+      if (now < tm) {
+        var soFar = (price != null && tgt != null) ? (price - tgt) : null;
+        var secIn = Math.max(0, Math.min(180, Math.round((now - ws) / 1000)));
+        iD.textContent = "Forming"; iD.style.color = GREY;
+        iR.textContent = soFar == null ? "Watching the first 3 minutes." : ("First 3 minutes still forming, " + mmss(secIn) + " in. BTC " + (Math.abs(soFar) < 1 ? "about flat" : (soFar > 0 ? ("up $" + fmt(Math.abs(soFar), 0)) : ("down $" + fmt(Math.abs(soFar), 0)))) + " versus the open so far.");
+      } else if (irec) {
+        var iUp = irec.dir === "up";
+        iD.textContent = iUp ? "Momentum: Up (Yes)" : "Momentum: Down (No)";
+        iD.style.color = iUp ? YES : NO;
+        iR.textContent = "First 3 minutes went " + irec.dir + " $" + fmt(irec.size, 0) + ". The crowd saw the same push, so Kalshi has already priced it in, this is not a cheap edge. Its own record is on the scoreboard below.";
+      } else {
+        iD.textContent = "Missed this one"; iD.style.color = GREY;
+        iR.textContent = "Page opened after the 3 minute mark, so this window's opening move could not be measured. It will catch the next one.";
+      }
+    }
     var vT = el("verdictText"), vW = el("verdictWhy"), vC = el("verdictCard");
     var blocked = pump || divAlarm;
     var v = verdictOf(pUp, lockZ, blocked);
