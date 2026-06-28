@@ -47,7 +47,6 @@
   .count{ font-size:12.5px; margin-top:2px; font-weight:700; color:var(--muted2); }
   .msub{ font-size:10.5px; color:#aab0b8; margin-top:6px; word-break:break-all; }
   .chart{ width:100%; height:150px; display:block; }
-  .tvwrap{ height:340px; width:100%; margin-top:4px; border-radius:10px; overflow:hidden; }
   .nextbtn{ margin-top:8px; width:100%; padding:9px; font-size:12.5px; font-weight:700; color:var(--blue); background:#eff4ff; border:1px solid #cfe0ff; border-radius:10px; cursor:pointer; }
   .note{ font-size:11px; margin-top:6px; line-height:1.45; }
   .caveat{ -webkit-column-span:all; column-span:all; font-size:10.5px; color:var(--muted); background:transparent; border:1px solid var(--border); border-radius:12px; padding:12px 14px; line-height:1.55; margin-top:2px; }
@@ -139,30 +138,21 @@ Warming up means it is still gathering price and market data.</div></details>
   </div>
 
   <div class="card wide">
-    <div class="label">TRADINGVIEW BTC (for eyeballs only, does not feed the reads)</div>
-    <div class="tvwrap">
-      <div class="tradingview-widget-container" style="height:100%;width:100%;">
-        <div class="tradingview-widget-container__widget" style="height:100%;width:100%;"></div>
-        <div class="tradingview-widget-copyright"><a href="https://www.tradingview.com/" rel="noopener nofollow" target="_blank">Track all markets on TradingView</a></div>
-        <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
-        {
-        "autosize": true,
-        "symbol": "COINBASE:BTCUSD",
-        "interval": "15",
-        "timezone": "America/New_York",
-        "theme": "light",
-        "style": "1",
-        "locale": "en",
-        "hide_side_toolbar": true,
-        "allow_symbol_change": true,
-        "save_image": false,
-        "calendar": false,
-        "support_host": "https://www.tradingview.com"
-        }
-        </script>
-      </div>
+    <div class="label">TRADINGVIEW BTC (reference number only)</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <div class="tradingview-widget-copyright"><a href="https://www.tradingview.com/" rel="noopener nofollow" target="_blank">Track all markets on TradingView</a></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js" async>
+      {
+      "symbol": "COINBASE:BTCUSD",
+      "width": "100%",
+      "isTransparent": true,
+      "colorTheme": "light",
+      "locale": "en"
+      }
+      </script>
     </div>
-    <div class="reason" style="margin-top:7px;">Live chart from TradingView, Coinbase BTC on 15 minute candles. Use it to watch for spikes. Your tool's reads still come from the four exchange blend, not from this chart.</div>
+    <div class="reason" style="margin-top:6px;">TradingView's BTC number, Coinbase. Your reads use the four exchange blend, not this.</div>
   </div>
 
   <div class="card">
@@ -230,7 +220,7 @@ Warming up means it is still gathering price and market data.</div></details>
   var cachedTarget = null, cachedTicker = null;
   var autoOn = true, userForcedManual = false;
   var timerSource = "local", targetSource = "locked";
-  var workingMethod = null, lastPoll = 0, polling = false, lastPollHr = 0, pollingHr = false, startedAt = Date.now(), lastChartDraw = 0;
+  var workingMethod = null, lastPoll = 0, polling = false, lastPollHr = 0, pollingHr = false, startedAt = Date.now(), lastChartDraw = 0, lastRollClose = 0;
 
   var sb = { pending: {}, completed: [], impulse: { pending: {}, completed: [] } }, sbStorageOk = true;
   var settledCache = [], settledPolled = false, lastSettledPoll = 0, pollingSettled = false;
@@ -391,6 +381,7 @@ Warming up means it is still gathering price and market data.</div></details>
     var p = blended(); if (p !== null && !isNaN(p)) { var t = Date.now(); samples.push({ t: t, p: p }); samples = samples.filter(function (s) { return s.t >= t - 1300000; }); }
     var fs0 = feedSpread(); if (fs0) { spreadHist.push({ t: Date.now(), s: fs0.spread }); spreadHist = spreadHist.filter(function (x) { return x.t >= Date.now() - 90000; }); }
     if (!manualPriceMode && !promptedManual && Date.now() > startedAt + 9000 && blended() === null) { promptedManual = true; goManualPrice("No exchange feed reached your phone. Switched to manual, type the price in."); }
+    if (autoOn && kalshi.closeTs && Date.now() >= kalshi.closeTs && !polling && lastRollClose !== kalshi.closeTs) { lastRollClose = kalshi.closeTs; lastPoll = 0; }
     var cts = effCloseTs(); var sLeft = cts !== null ? (cts - Date.now()) / 1000 : null; var interval = (sLeft !== null && sLeft <= 90) ? 2000 : 6000; if (!userForcedManual && Date.now() - lastPoll >= interval) pollKalshi();
     if (Date.now() - lastPollHr >= 15000) pollHourly();
     if (Date.now() - lastSettledPoll >= 30000) pollSettled();
@@ -483,7 +474,7 @@ Warming up means it is still gathering price and market data.</div></details>
     } else { el("autoBlock").classList.add("hidden"); el("manualBlock").classList.remove("hidden"); el("marketLabel").textContent = "15 MIN MARKET (manual)"; el("modeBtn").textContent = "use Kalshi auto"; el("manualNote").textContent = userForcedManual ? "" : "Could not reach Kalshi automatically, enter the target yourself for now."; }
 
     var cd = el("autoCount");
-    if (secsLeft === null) cd.textContent = ""; else { var txt = mmss(secsLeft) + " to close"; if (inFinal) { txt += "  \u00b7  FINAL MINUTE"; cd.style.color = AMBER; } else cd.style.color = "#374151"; cd.textContent = txt; }
+    if (secsLeft === null) cd.textContent = ""; else if (secsLeft <= 0) { cd.textContent = "window closed, loading next 15 min"; cd.style.color = "#2563eb"; } else { var txt = mmss(secsLeft) + " to close"; if (inFinal) { txt += "  \u00b7  FINAL MINUTE"; cd.style.color = AMBER; } else cd.style.color = "#374151"; cd.textContent = txt; }
 
     var windowCount = 0, Ssum = 0;
     if (closeTs !== null) { var win = samples.filter(function (s) { return s.t >= closeTs - 60000 && s.t <= closeTs; }); windowCount = win.length; win.forEach(function (s) { Ssum += s.p; }); }
@@ -610,7 +601,7 @@ Warming up means it is still gathering price and market data.</div></details>
     else if (pUp >= 0.55 || pUp <= 0.45) vW.textContent = "Price is $" + fmt(Math.abs((price || 0) - (tgt || 0)), 0) + " " + ((price || 0) >= (tgt || 0) ? "above" : "below") + " with " + mmss(secsLeft) + " left, BTC swinging about $" + fmt(volPerMin, 0) + " a minute. It leans that way but that is not an edge, so sit out.";
     else vW.textContent = "Right on the target with " + mmss(secsLeft) + " left. Genuinely fifty fifty, nothing to bet on.";
     var vTimer = el("verdictTimer");
-    vTimer.textContent = (secsLeft === null) ? "" : (mmss(secsLeft) + " to close" + (inFinal ? ", final minute" : ""));
+    vTimer.textContent = (secsLeft === null) ? "" : (secsLeft <= 0 ? "loading next 15 min" : (mmss(secsLeft) + " to close" + (inFinal ? ", final minute" : "")));
 
     if (autoOn && kalshi.ticker && haveTarget && closeTs != null && price != null) {
       try { sbMaybeSnapshot(kalshi.ticker, tgt, closeTs, v, pUp, price, kalshi.yesAsk, kalshi.noAsk, kalshi.upPct, secsLeft); } catch (e) {}
