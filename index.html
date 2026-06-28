@@ -17,6 +17,7 @@
   .section{ display:none; }
   .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:13px 15px; box-shadow:var(--shadow); -webkit-column-break-inside:avoid; break-inside:avoid; margin:0 0 10px; }
   #verdictCard{ -webkit-column-span:all; column-span:all; padding:16px 18px; border-radius:16px; }
+  #consCard{ -webkit-column-span:all; column-span:all; padding:14px 18px; border-radius:16px; }
   .wide{ -webkit-column-span:all; column-span:all; }
   .label{ font-size:9.5px; color:var(--muted); margin-bottom:6px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; line-height:1.25; }
   .answer{ text-align:center; padding:12px 10px; }
@@ -70,6 +71,13 @@
     <div class="verdict" id="verdictText" style="color:#9ca3af;">warming up</div>
     <div class="reason" id="verdictWhy">Gathering price and market data.</div>
     <div class="vtimer" id="verdictTimer"></div>
+  </div>
+
+  <div class="card vcard" id="consCard">
+    <div class="label">AGREEMENT OF THE TOP THREE</div>
+    <div class="verdict" id="consText" style="color:#9ca3af;">warming up</div>
+    <div id="consGlance" style="font-size:12.5px; font-weight:800; margin-top:9px; letter-spacing:-0.01em;"></div>
+    <div class="reason" id="consWhy" style="margin-top:7px;">Waiting for the three reads.</div>
   </div>
 
   <div class="card wide">
@@ -503,12 +511,13 @@ Warming up means it is still gathering price and market data.</div></details>
 
     var card = el("answerCard"), word = el("answerWord"), gap = el("answerGap"), jl = el("answerJudge"), safe = el("answerSafety");
     el("answerLabel").textContent = inFinal ? "15 MIN SETTLEMENT (final minute average)" : "15 MIN LIVE READ (price vs target)";
+    var liveTooClose = false;
     if (haveTarget && validJudge) {
       var isYes = judge >= tgt, diff = judge - tgt;
       word.textContent = isYes ? "YES" : "NO"; word.style.color = isYes ? YES : NO; card.style.borderColor = isYes ? YES : NO; card.style.background = isYes ? "#ecfdf5" : "#fff1f2";
       gap.textContent = (diff >= 0 ? "Above" : "Below") + " the price to beat by $" + fmt(Math.abs(diff));
       var basisBand = Math.max(8, fs ? fs.spread * 1.5 : 8);
-      if (Math.abs(diff) < basisBand && !(inFinal && r <= 0) && (lockZ == null || lockZ < Z_LOCK)) { word.style.color = GREY; card.style.borderColor = "#e7e8ec"; card.style.background = "#fff"; gap.textContent += ". Too close to call, the tool reads spot while Kalshi settles on a different index, so they can differ by a few dollars right at the line."; }
+      if (Math.abs(diff) < basisBand && !(inFinal && r <= 0) && (lockZ == null || lockZ < Z_LOCK)) { liveTooClose = true; word.style.color = GREY; card.style.borderColor = "#e7e8ec"; card.style.background = "#fff"; gap.textContent += ". Too close to call, the tool reads spot while Kalshi settles on a different index, so they can differ by a few dollars right at the line."; }
       jl.textContent = "Judging on $" + fmt(judge) + (inFinal ? (" (avg of " + windowCount + " of 60 secs)") : " (live price)") + (held ? ", price catching up" : "");
       if (secsLeft === null) safe.textContent = "";
       else if (inFinal && r <= 0) { safe.style.color = isYes ? YES : NO; safe.textContent = "Locked and settled. Final average is " + (isYes ? "above" : "below") + " the target."; }
@@ -619,6 +628,7 @@ Warming up means it is still gathering price and market data.</div></details>
       L.push("How to read this: the tool's odds are its own estimate, the Kalshi odds come straight from its price. A side shows a plus edge when it looks cheaper than the tool thinks. The safe cushion is how far price must sit from the target to be hard to flip before close. Keep in mind Kalshi sees more than this tool does, the full order book and everyone's information, so a plus edge is more often the tool being off than a real mispricing. Treat any plus edge as a maybe, not a green light, and most of the time sitting out is the right call.");
       return L.join("\n");
     }
+    var tvDir = null;
     if (pUp == null || kalshi.yesAsk == null || kalshi.noAsk == null) { dT.textContent = "warming up"; dT.style.color = GREY; dR.textContent = (sig120 == null && sig30 == null) ? "Gathering a few seconds of price to read volatility." : "Waiting on the Kalshi market price."; dS.textContent = ""; }
     else if (pump || divAlarm) { dT.textContent = "Sit out, too unstable"; dT.style.color = AMBER; dR.textContent = divAlarm ? "The exchanges are out of line, the footprint of a single venue push or a lagging feed. Stand down, this is the setup to stay out of." : "Volatility is spiking. Cushions vanish fast and the read is unreliable. Stand down until it calms."; dS.textContent = statsBlock(""); }
     else {
@@ -632,9 +642,27 @@ Warming up means it is still gathering price and market data.</div></details>
       else if (bestEv >= 5) { dHead = "Best guess " + vSide + " (sit out)"; dCol = AMBER; dWhy = de.reason; }
       else if (pUp != null && pUp >= 0.45 && pUp <= 0.55) { dHead = "Coin toss (sit out)"; dCol = GREY; dWhy = de.reason; }
       else { var lean = (pUp == null) ? "" : (pUp >= 0.90 ? ", Yes near certain" : (pUp >= 0.55 ? ", Yes favored" : (pUp <= 0.10 ? ", No near certain" : ", No favored"))); dHead = (lean === "" ? "Sit it out" : "Sit out" + lean); dCol = AMBER; dWhy = de.reason; }
+      tvDir = (bestEv >= 5) ? vSide : ((pUp != null && pUp >= 0.55) ? "Yes" : ((pUp != null && pUp <= 0.45) ? "No" : null));
       dT.textContent = dHead; dT.style.color = dCol; dR.textContent = dWhy;
       dS.textContent = statsBlock("Value: Up " + (de.evUp >= 0 ? "+" : "") + Math.round(de.evUp) + "c, Down " + (de.evDown >= 0 ? "+" : "") + Math.round(de.evDown) + "c after fees" + (cushionSafe != null ? (cushionSafe ? " (cushion is enough)" : " (cushion not enough yet)") : ""));
     }
+
+    var ccDir = (blocked || pUp == null) ? null : (pUp >= 0.55 ? "Yes" : (pUp <= 0.45 ? "No" : null));
+    var liveDir = (leaning == null || liveTooClose) ? null : (leaning ? "Yes" : "No");
+    var consLocked = (lockZ != null && lockZ >= Z_LOCK);
+    var primaryDir = (ccDir != null && liveDir != null && ccDir === liveDir) ? ccDir : null;
+    function dTag(d) { return d == null ? '<span style="color:' + GREY + '">neutral</span>' : (d === "Yes" ? '<span style="color:' + YES + '">Yes</span>' : '<span style="color:' + NO + '">No</span>'); }
+    el("consGlance").innerHTML = "Call " + dTag(ccDir) + "   \u00b7   Live " + dTag(liveDir) + "   \u00b7   Trade " + dTag(tvDir);
+    var conHead, conCol, conWhy;
+    if (blocked) { conCol = AMBER; conHead = "Too unstable, sit out"; conWhy = pump ? "Volatility is spiking, so none of the three reads can be trusted right now. Stand down until it calms." : "The exchanges are out of line, a possible single venue push. Stand down."; }
+    else if (primaryDir != null) {
+      var allThree = (tvDir === primaryDir), tvNeutral = (tvDir == null), sCol = primaryDir === "Yes" ? YES : NO;
+      if (consLocked) { conCol = sCol; conHead = primaryDir.toUpperCase() + ", aligned and locked"; conWhy = (allThree ? "All three point " + primaryDir + ", " : "Claude's Call and the live read point " + primaryDir + ", ") + "and the cushion is locked with " + mmss(secsLeft) + " left. This is the near certain case you noticed. It is usually right, but it is right because the outcome is already decided and priced near the max, so there is no profit left in betting it. Good for confidence, not for money."; }
+      else { conCol = AMBER; conHead = primaryDir.toUpperCase() + ", leaning, not locked"; conWhy = (allThree ? "All three point " + primaryDir + ". " : (tvNeutral ? "Claude's Call and the live read point " + primaryDir + ", the trade view is neutral. " : "Claude's Call and the live read point " + primaryDir + ", the trade view leans the other way. ")) + "Price is on that side with " + mmss(secsLeft) + " left, but it is not locked, so a swing can still flip it. Treat it as a lean, not a sure thing. Agreement near the close is far stronger than agreement early."; }
+    }
+    else if (ccDir != null && liveDir != null && ccDir !== liveDir) { conCol = GREY; conHead = "Split, sit out"; conWhy = "Claude's Call leans " + ccDir + " but the live read shows " + liveDir + " right now. They disagree, so there is no clean read. Sit out."; }
+    else { conCol = GREY; conHead = "No clear read yet"; conWhy = "Not enough agreement yet. One or more of the three is a coin toss, too close to call, or still warming up. Sit out."; }
+    el("consText").textContent = conHead; el("consText").style.color = conCol; el("consCard").style.borderColor = (conCol === GREY ? "#e5e7eb" : conCol); el("consWhy").textContent = conWhy;
 
     var hD = el("hrDisp"), hR = el("hrReason"), hS = el("hrStats"), hC = el("hrCard");
     if (hourly.target == null) {
