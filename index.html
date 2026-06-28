@@ -230,7 +230,7 @@ Warming up means it is still gathering price and market data.</div></details>
   var timerSource = "local", targetSource = "locked";
   var workingMethod = null, lastPoll = 0, polling = false, lastPollHr = 0, pollingHr = false, startedAt = Date.now(), lastChartDraw = 0, lastRollClose = 0;
 
-  var sb = { pending: {}, completed: [], impulse: { pending: {}, completed: [] } }, sbStorageOk = true;
+  var sb = { pending: {}, completed: [], impulse: { pending: {}, completed: [] }, agree: { pending: {}, completed: [] } }, sbStorageOk = true;
   var settledCache = [], settledPolled = false, lastSettledPoll = 0, pollingSettled = false;
   var impulseFetching = {}, impulseTries = {};
 
@@ -250,20 +250,22 @@ Warming up means it is still gathering price and market data.</div></details>
   function scheduleRender() { if (rafPending) return; rafPending = true; requestAnimationFrame(function () { rafPending = false; try { render(); } catch (e) {} try { drawChart(); } catch (e) {} }); }
 
   // scoreboard storage
-  function sbLoad() { try { var raw = localStorage.getItem(SB_KEY); if (raw) { var o = JSON.parse(raw); sb.pending = o.pending || {}; sb.completed = o.completed || []; sb.impulse = o.impulse || { pending: {}, completed: [] }; if (!sb.impulse.pending) sb.impulse.pending = {}; if (!sb.impulse.completed) sb.impulse.completed = []; } } catch (e) { sbStorageOk = false; } }
+  function sbLoad() { try { var raw = localStorage.getItem(SB_KEY); if (raw) { var o = JSON.parse(raw); sb.pending = o.pending || {}; sb.completed = o.completed || []; sb.impulse = o.impulse || { pending: {}, completed: [] }; if (!sb.impulse.pending) sb.impulse.pending = {}; if (!sb.impulse.completed) sb.impulse.completed = []; sb.agree = o.agree || { pending: {}, completed: [] }; if (!sb.agree.pending) sb.agree.pending = {}; if (!sb.agree.completed) sb.agree.completed = []; } } catch (e) { sbStorageOk = false; } }
   function sbSave() { try { localStorage.setItem(SB_KEY, JSON.stringify(sb)); } catch (e) { sbStorageOk = false; } }
   function classify(vt) { if (vt === "YES") return { kind: "locked", side: "yes" }; if (vt === "NO") return { kind: "locked", side: "no" }; if (vt.indexOf("Best guess Yes") === 0) return { kind: "guess", side: "yes" }; if (vt.indexOf("Best guess No") === 0) return { kind: "guess", side: "no" }; if (vt.indexOf("Coin toss") === 0) return { kind: "toss", side: null }; return { kind: "sitout", side: null }; }
   function sbCompletedHas(tk) { for (var i = 0; i < sb.completed.length; i++) { if (sb.completed[i].ticker === tk) return true; } return false; }
-  function sbMaybeSnapshot(ticker, target, closeTs, vobj, pUp, price, yesAsk, noAsk, crowdUp, secsLeft) {
+  function sbMaybeSnapshot(ticker, target, closeTs, vobj, pUp, price, yesAsk, noAsk, crowdUp, secsLeft, consDir, consLocked) {
     if (!ticker || target == null || closeTs == null || price == null) return;
     if (secsLeft == null || secsLeft > SNAP_LEAD || secsLeft <= 0) return;
     if (vobj.t === "warming up") return;
     if (sb.pending[ticker] || sbCompletedHas(ticker)) return;
     var cl = classify(vobj.t);
     sb.pending[ticker] = { ticker: ticker, target: target, closeTs: closeTs, verdict: vobj.t, kind: cl.kind, side: cl.side, pUp: pUp, price: price, yesAsk: yesAsk, noAsk: noAsk, crowdUp: crowdUp, snapAt: Date.now() };
+    if (consDir && !sb.agree.pending[ticker] && !agreeCompletedHas(ticker)) sb.agree.pending[ticker] = { ticker: ticker, closeTs: closeTs, dir: consDir, locked: !!consLocked, snapAt: Date.now() };
     sbSave();
   }
   function settledResultFor(tk) { for (var i = 0; i < settledCache.length; i++) { if (settledCache[i].ticker === tk && settledCache[i].result) return settledCache[i].result; } return null; }
+  function agreeCompletedHas(tk) { for (var i = 0; i < sb.agree.completed.length; i++) { if (sb.agree.completed[i].ticker === tk) return true; } return false; }
   function sbFinalize() {
     var changed = false;
     for (var tk in sb.pending) {
@@ -281,6 +283,18 @@ Warming up means it is still gathering price and market data.</div></details>
       delete sb.pending[tk]; changed = true;
     }
     if (sb.completed.length > 800) sb.completed = sb.completed.slice(-800);
+    for (var atk in sb.agree.pending) {
+      if (!sb.agree.pending.hasOwnProperty(atk)) continue;
+      var arec = sb.agree.pending[atk];
+      if (Date.now() > arec.closeTs + 3 * 3600 * 1000) { delete sb.agree.pending[atk]; changed = true; continue; }
+      if (Date.now() < arec.closeTs + 3000) continue;
+      var ares = settledResultFor(atk);
+      if (ares == null) continue;
+      var adir = arec.dir === "Yes" ? "yes" : "no";
+      sb.agree.completed.push({ ticker: atk, closeTs: arec.closeTs, dir: arec.dir, locked: arec.locked, result: ares, correct: (adir === ares) });
+      delete sb.agree.pending[atk]; changed = true;
+    }
+    if (sb.agree.completed.length > 800) sb.agree.completed = sb.agree.completed.slice(-800);
     if (changed) sbSave();
   }
 
@@ -345,7 +359,7 @@ Warming up means it is still gathering price and market data.</div></details>
   function effCloseTs() { if (timerSource === "kalshi" && kalshi.ok && kalshi.closeTs) return kalshi.closeTs; if (!autoOn) { var v = el("closeInput").value.trim(); if (!/^\d{1,2}:\d{2}$/.test(v)) return localClose(); var p = v.split(":"); var h = parseInt(p[0], 10), m = parseInt(p[1], 10); if (h > 23 || m > 59) return localClose(); var d = new Date(); d.setHours(h, m, 0, 0); if (d.getTime() < Date.now() - 60000) d.setDate(d.getDate() + 1); return d.getTime(); } return localClose(); }
   el("timerBtn").addEventListener("click", function () { timerSource = timerSource === "local" ? "kalshi" : "local"; scheduleRender(); });
   el("targetBtn").addEventListener("click", function () { targetSource = targetSource === "locked" ? "live" : "locked"; scheduleRender(); });
-  el("sbReset").addEventListener("click", function () { if (window.confirm("Reset the scoreboard record? This cannot be undone.")) { sb = { pending: {}, completed: [], impulse: { pending: {}, completed: [] } }; sbSave(); scheduleRender(); } });
+  el("sbReset").addEventListener("click", function () { if (window.confirm("Reset the scoreboard record? This cannot be undone.")) { sb = { pending: {}, completed: [], impulse: { pending: {}, completed: [] }, agree: { pending: {}, completed: [] } }; sbSave(); scheduleRender(); } });
 
   function routeUrl(m, url) { if (m === 0) return url; if (m === 1) return "https://corsproxy.io/?url=" + encodeURIComponent(url); return "https://api.allorigins.win/raw?url=" + encodeURIComponent(url); }
   function fetchT(url, ms) { var ctrl = new AbortController(); var to = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, ms); return fetch(url, { cache: "no-store", signal: ctrl.signal }).then(function (r) { clearTimeout(to); return r; }, function (e) { clearTimeout(to); throw e; }); }
@@ -434,6 +448,8 @@ Warming up means it is still gathering price and market data.</div></details>
     lines.push("Best guess calls, " + (gN ? (gW + " of " + gN + " right, " + Math.round(gW / gN * 100) + "%, P/L " + plTxt(gPL) + " per contract") : "none yet"));
     var ic = sb.impulse.completed, iN = ic.length, iW = 0, iPL = 0; for (var ij = 0; ij < ic.length; ij++) { if (ic[ij].correct) iW++; iPL += (ic[ij].pl || 0); } var iPend = 0; for (var ik in sb.impulse.pending) { if (sb.impulse.pending.hasOwnProperty(ik)) iPend++; }
     lines.push("Opening impulse calls, " + (iN ? (iW + " of " + iN + " right, " + Math.round(iW / iN * 100) + "%, P/L " + plTxt(iPL) + " per contract") : "none yet") + (iPend ? (". Waiting to settle, " + iPend) : ""));
+    var ag = sb.agree.completed; var agL = 0, agLw = 0, agNl = 0, agNw = 0; for (var ai = 0; ai < ag.length; ai++) { if (ag[ai].locked) { agL++; if (ag[ai].correct) agLw++; } else { agNl++; if (ag[ai].correct) agNw++; } } var agPend = 0; for (var ak in sb.agree.pending) { if (sb.agree.pending.hasOwnProperty(ak)) agPend++; }
+    lines.push("Agreement tile, top two agree and locked, " + (agL ? (agLw + " of " + agL + " right, " + Math.round(agLw / agL * 100) + "%") : "none yet") + ". Top two agree but leaning, " + (agNl ? (agNw + " of " + agNl + " right, " + Math.round(agNw / agNl * 100) + "%") : "none yet") + (agPend ? (". Waiting to settle, " + agPend) : ""));
     lines.push("Stood aside, " + aside + " times. Waiting to settle, " + pend);
     lines.push("Locked should sit near 100% and pay almost nothing. Best guess should sit near 50% and bleed after fees. Let the record decide, not a feeling.");
     if (!sbStorageOk) lines.push("Heads up, this browser is not saving the record, it will reset on reload.");
@@ -612,8 +628,12 @@ Warming up means it is still gathering price and market data.</div></details>
     var vTimer = el("verdictTimer");
     vTimer.textContent = (secsLeft === null) ? "" : (secsLeft <= 0 ? "loading next 15 min" : (mmss(secsLeft) + " to close" + (inFinal ? ", final minute" : "")));
 
+    var ccDir = (blocked || pUp == null) ? null : (pUp >= 0.55 ? "Yes" : (pUp <= 0.45 ? "No" : null));
+    var liveDir = (leaning == null || liveTooClose) ? null : (leaning ? "Yes" : "No");
+    var consLocked = (lockZ != null && lockZ >= Z_LOCK);
+    var primaryDir = (ccDir != null && liveDir != null && ccDir === liveDir) ? ccDir : null;
     if (autoOn && kalshi.ticker && haveTarget && closeTs != null && price != null) {
-      try { sbMaybeSnapshot(kalshi.ticker, tgt, closeTs, v, pUp, price, kalshi.yesAsk, kalshi.noAsk, kalshi.upPct, secsLeft); } catch (e) {}
+      try { sbMaybeSnapshot(kalshi.ticker, tgt, closeTs, v, pUp, price, kalshi.yesAsk, kalshi.noAsk, kalshi.upPct, secsLeft, primaryDir, consLocked); } catch (e) {}
     }
 
     var pb = el("pumpBar"), db = el("divBar"), dT = el("dispText"), dR = el("dispReason"), dS = el("dispStats");
@@ -647,10 +667,6 @@ Warming up means it is still gathering price and market data.</div></details>
       dS.textContent = statsBlock("Value: Up " + (de.evUp >= 0 ? "+" : "") + Math.round(de.evUp) + "c, Down " + (de.evDown >= 0 ? "+" : "") + Math.round(de.evDown) + "c after fees" + (cushionSafe != null ? (cushionSafe ? " (cushion is enough)" : " (cushion not enough yet)") : ""));
     }
 
-    var ccDir = (blocked || pUp == null) ? null : (pUp >= 0.55 ? "Yes" : (pUp <= 0.45 ? "No" : null));
-    var liveDir = (leaning == null || liveTooClose) ? null : (leaning ? "Yes" : "No");
-    var consLocked = (lockZ != null && lockZ >= Z_LOCK);
-    var primaryDir = (ccDir != null && liveDir != null && ccDir === liveDir) ? ccDir : null;
     function dTag(d) { return d == null ? '<span style="color:' + GREY + '">neutral</span>' : (d === "Yes" ? '<span style="color:' + YES + '">Yes</span>' : '<span style="color:' + NO + '">No</span>'); }
     el("consGlance").innerHTML = "Call " + dTag(ccDir) + "   \u00b7   Live " + dTag(liveDir) + "   \u00b7   Trade " + dTag(tvDir);
     var conHead, conCol, conWhy;
