@@ -30,6 +30,11 @@
   .dispsm{ font-size:16px; font-weight:800; line-height:1.12; color:#9aa1ac; }
   .reason{ font-size:11.5px; color:var(--muted2); margin-top:6px; line-height:1.45; }
   .stat{ font-size:11.5px; color:var(--muted2); margin-top:7px; line-height:1.5; white-space:pre-line; }
+  .vtimer{ font-size:13px; font-weight:800; color:var(--blue); margin-top:9px; letter-spacing:-0.01em; }
+  .legend{ margin-top:9px; }
+  .legend summary{ font-size:11px; font-weight:700; color:var(--blue); cursor:pointer; list-style:none; }
+  .legend summary::-webkit-details-marker{ display:none; }
+  .legendbody{ font-size:11px; color:var(--muted2); margin-top:7px; line-height:1.55; white-space:pre-line; }
   input{ width:100%; padding:10px 11px; font-size:16px; background:#fff; color:var(--text); border:1px solid #d7dae0; border-radius:10px; }
   input::placeholder{ color:#aab0b8; }
   .row{ display:flex; justify-content:space-between; align-items:center; margin-bottom:7px; gap:6px; }
@@ -42,6 +47,7 @@
   .count{ font-size:12.5px; margin-top:2px; font-weight:700; color:var(--muted2); }
   .msub{ font-size:10.5px; color:#aab0b8; margin-top:6px; word-break:break-all; }
   .chart{ width:100%; height:150px; display:block; }
+  .tvwrap{ height:340px; width:100%; margin-top:4px; border-radius:10px; overflow:hidden; }
   .nextbtn{ margin-top:8px; width:100%; padding:9px; font-size:12.5px; font-weight:700; color:var(--blue); background:#eff4ff; border:1px solid #cfe0ff; border-radius:10px; cursor:pointer; }
   .note{ font-size:11px; margin-top:6px; line-height:1.45; }
   .caveat{ -webkit-column-span:all; column-span:all; font-size:10.5px; color:var(--muted); background:transparent; border:1px solid var(--border); border-radius:12px; padding:12px 14px; line-height:1.55; margin-top:2px; }
@@ -64,6 +70,7 @@
     <div class="label">CLAUDE'S CALL (15 min)</div>
     <div class="verdict" id="verdictText" style="color:#9ca3af;">warming up</div>
     <div class="reason" id="verdictWhy">Gathering price and market data.</div>
+    <div class="vtimer" id="verdictTimer"></div>
   </div>
 
   <div class="card wide">
@@ -73,6 +80,12 @@
     <div class="disp" id="dispText" style="color:#9ca3af;">warming up</div>
     <div class="reason" id="dispReason">Gathering price and market data.</div>
     <div class="stat" id="dispStats"></div>
+    <details class="legend"><summary>What the words mean</summary><div class="legendbody">Yes or No, in green or red, is the strongest read. The tool sees real value on that side. Keep size small, Kalshi usually knows more.
+Best guess Yes or No means only a small edge, not enough to act on, so it says sit out.
+Sit out with a side, like Yes near certain or No favored, shows which way it leans while there is no money left in it, either already priced in or priced fairly.
+Coin toss means about fifty fifty, nothing to lean on.
+Sit out, too unstable means a pump or the exchanges disagree, so the read cannot be trusted.
+Warming up means it is still gathering price and market data.</div></details>
   </div>
 
   <div class="card answer" id="answerCard">
@@ -100,7 +113,7 @@
   </div>
 
   <div class="card vcard" id="hrCard">
-    <div class="label">NEXT HOUR CALL (projection to the top of the hour)</div>
+    <div class="label">BTC ABOVE OR BELOW (next Kalshi hourly settle)</div>
     <div class="dispsm" id="hrDisp" style="color:#9ca3af;">loading</div>
     <div class="reason" id="hrReason"></div>
     <div class="stat" id="hrStats"></div>
@@ -123,6 +136,33 @@
   <div class="card wide">
     <div class="label">LIVE CHART (blended price vs 15 min target)</div>
     <canvas id="chart" class="chart"></canvas>
+  </div>
+
+  <div class="card wide">
+    <div class="label">TRADINGVIEW BTC (for eyeballs only, does not feed the reads)</div>
+    <div class="tvwrap">
+      <div class="tradingview-widget-container" style="height:100%;width:100%;">
+        <div class="tradingview-widget-container__widget" style="height:100%;width:100%;"></div>
+        <div class="tradingview-widget-copyright"><a href="https://www.tradingview.com/" rel="noopener nofollow" target="_blank">Track all markets on TradingView</a></div>
+        <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
+        {
+        "autosize": true,
+        "symbol": "COINBASE:BTCUSD",
+        "interval": "15",
+        "timezone": "America/New_York",
+        "theme": "light",
+        "style": "1",
+        "locale": "en",
+        "hide_side_toolbar": true,
+        "allow_symbol_change": true,
+        "save_image": false,
+        "calendar": false,
+        "support_host": "https://www.tradingview.com"
+        }
+        </script>
+      </div>
+    </div>
+    <div class="reason" style="margin-top:7px;">Live chart from TradingView, Coinbase BTC on 15 minute candles. Use it to watch for spikes. Your tool's reads still come from the four exchange blend, not from this chart.</div>
   </div>
 
   <div class="card">
@@ -166,7 +206,7 @@
   </div>
 
   <div class="caveat">
-    Claude's call gives a straight yes or no only when the outcome is effectively locked, otherwise a best guess tagged sit out. The scoreboard grades those calls against how Kalshi settled, so the truth shows up over time, not a feeling. Gap speed shows how fast the price is moving, but speed is not direction. Price is blended across Coinbase, Kraken and Bitstamp. This is information, not trading advice, and these moves are close to random, so only risk what you can lose.
+    Claude's call gives a straight yes or no only when the outcome is effectively locked, otherwise a best guess tagged sit out. The scoreboard grades those calls against how Kalshi settled, so the truth shows up over time, not a feeling. Gap speed shows how fast the price is moving, but speed is not direction. Price is blended across Coinbase, Kraken, Bitstamp and Gemini, four of the exchanges Kalshi's settlement index reads from. This is information, not trading advice, and these moves are close to random, so only risk what you can lose.
   </div>
 
 </div>
@@ -180,7 +220,7 @@
   var Z_LOCK = 3, Z_ALMOST = 2.3;
   var SB_KEY = "btc_tool_sb_v1", SNAP_LEAD = 60;
 
-  var feeds = { coinbase: { p: null, t: 0 }, kraken: { p: null, t: 0 }, bitstamp: { p: null, t: 0 } };
+  var feeds = { coinbase: { p: null, t: 0 }, kraken: { p: null, t: 0 }, bitstamp: { p: null, t: 0 }, gemini: { p: null, t: 0 } };
   var manualPriceMode = false, promptedManual = false;
   var samples = [], spreadHist = [];
   var lastBlended = null, lastBlendedT = 0;
@@ -201,7 +241,7 @@
   function num(x) { var v = parseFloat(x); return isNaN(v) ? null : v; }
   function ampm(ts) { var d = new Date(ts); var h = d.getHours(), m = d.getMinutes(); var ap = h < 12 ? "AM" : "PM"; var hh = h % 12; if (hh === 0) hh = 12; return hh + ":" + ("0" + m).slice(-2) + " " + ap; }
   function mmss(s) { if (s == null) return ""; if (s >= 60) return Math.floor(s / 60) + "m " + (s % 60) + "s"; return s + "s"; }
-  function nameOf(k) { return k === "coinbase" ? "Coinbase" : k === "kraken" ? "Kraken" : "Bitstamp"; }
+  function nameOf(k) { return k === "coinbase" ? "Coinbase" : k === "kraken" ? "Kraken" : k === "bitstamp" ? "Bitstamp" : "Gemini"; }
   function erf(x) { var t = 1 / (1 + 0.3275911 * Math.abs(x)); var y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x); return x >= 0 ? y : -y; }
   function normCdf(x) { return 0.5 * (1 + erf(x / Math.SQRT2)); }
   function feeCents(pDollar) { if (pDollar <= 0 || pDollar >= 1) return 0; return Math.ceil(7 * pDollar * (1 - pDollar)); }
@@ -288,7 +328,8 @@
   function connectCoinbase() { try { var w = new WebSocket("wss://ws-feed.exchange.coinbase.com"); feeds.coinbase.ws = w; w.onopen = function () { w.send(JSON.stringify({ type: "subscribe", product_ids: ["BTC-USD"], channels: ["ticker"] })); }; w.onmessage = function (ev) { try { var d = JSON.parse(ev.data); if (d.type === "ticker" && d.price) { feeds.coinbase.p = parseFloat(d.price); feeds.coinbase.t = Date.now(); scheduleRender(); } } catch (e) {} }; w.onclose = function () { setTimeout(connectCoinbase, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
   function connectKraken() { try { var w = new WebSocket("wss://ws.kraken.com/v2"); feeds.kraken.ws = w; w.onopen = function () { w.send(JSON.stringify({ method: "subscribe", params: { channel: "ticker", symbol: ["BTC/USD"] } })); }; w.onmessage = function (ev) { try { var d = JSON.parse(ev.data); if (d.channel === "ticker" && d.data && d.data[0] && d.data[0].last != null) { feeds.kraken.p = parseFloat(d.data[0].last); feeds.kraken.t = Date.now(); scheduleRender(); } } catch (e) {} }; w.onclose = function () { setTimeout(connectKraken, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
   function connectBitstamp() { try { var w = new WebSocket("wss://ws.bitstamp.net"); feeds.bitstamp.ws = w; w.onopen = function () { w.send(JSON.stringify({ event: "bts:subscribe", data: { channel: "live_trades_btcusd" } })); }; w.onmessage = function (ev) { try { var d = JSON.parse(ev.data); if (d.event === "trade" && d.data && d.data.price) { feeds.bitstamp.p = parseFloat(d.data.price); feeds.bitstamp.t = Date.now(); scheduleRender(); } } catch (e) {} }; w.onclose = function () { setTimeout(connectBitstamp, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
-  function freshFeeds() { var now = Date.now(), a = []; ["coinbase", "kraken", "bitstamp"].forEach(function (k) { var f = feeds[k]; if (f.p != null && now - f.t <= FRESH) a.push({ k: k, p: f.p }); }); return a; }
+  function connectGemini() { try { var w = new WebSocket("wss://api.gemini.com/v1/marketdata/BTCUSD?trades=true&bids=false&offers=false"); feeds.gemini.ws = w; w.onmessage = function (ev) { try { var d = JSON.parse(ev.data); if (d.events && d.events.length) { for (var i = d.events.length - 1; i >= 0; i--) { var e = d.events[i]; if (e.type === "trade" && e.price) { feeds.gemini.p = parseFloat(e.price); feeds.gemini.t = Date.now(); scheduleRender(); break; } } } } catch (e) {} }; w.onclose = function () { setTimeout(connectGemini, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
+  function freshFeeds() { var now = Date.now(), a = []; ["coinbase", "kraken", "bitstamp", "gemini"].forEach(function (k) { var f = feeds[k]; if (f.p != null && now - f.t <= FRESH) a.push({ k: k, p: f.p }); }); return a; }
   function blendedRaw() { var a = freshFeeds().map(function (x) { return x.p; }); if (!a.length) return null; a.sort(function (x, y) { return x - y; }); return a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2; }
   function blended() { if (manualPriceMode) { var v = el("manualInput").value; return v === "" ? null : parseFloat(v); } var raw = blendedRaw(); if (raw != null) { lastBlended = raw; lastBlendedT = Date.now(); return raw; } if (lastBlended != null && Date.now() - lastBlendedT <= HOLD) return lastBlended; return null; }
   function priceIsHeld() { return !manualPriceMode && blendedRaw() === null && blended() !== null; }
@@ -346,7 +387,7 @@
 
   setInterval(function () {
     var nowW = Date.now();
-    ["coinbase", "kraken", "bitstamp"].forEach(function (k) { var f = feeds[k]; if (f.ws && f.ws.readyState === 1 && f.t > 0 && nowW - f.t > 22000) { try { f.ws.close(); } catch (e) {} } });
+    ["coinbase", "kraken", "bitstamp", "gemini"].forEach(function (k) { var f = feeds[k]; if (f.ws && f.ws.readyState === 1 && f.t > 0 && nowW - f.t > 22000) { try { f.ws.close(); } catch (e) {} } });
     var p = blended(); if (p !== null && !isNaN(p)) { var t = Date.now(); samples.push({ t: t, p: p }); samples = samples.filter(function (s) { return s.t >= t - 1300000; }); }
     var fs0 = feedSpread(); if (fs0) { spreadHist.push({ t: Date.now(), s: fs0.spread }); spreadHist = spreadHist.filter(function (x) { return x.t >= Date.now() - 90000; }); }
     if (!manualPriceMode && !promptedManual && Date.now() > startedAt + 9000 && blended() === null) { promptedManual = true; goManualPrice("No exchange feed reached your phone. Switched to manual, type the price in."); }
@@ -422,7 +463,7 @@
     if (fs && fs.n >= 2 && base != null) { var thr = Math.max(DIV_FLOOR, DIV_MULT * base); if (fs.maxDev > thr) { divAlarm = true; divText = (fs.n >= 3 ? (nameOf(fs.outlier) + " is about $" + fmt(fs.maxDev, 0) + " off the others") : ("the two venues are about $" + fmt(fs.spread, 0) + " apart")) + ". Could be a single venue push, or one feed lagging. Either way the number is less reliable, stand down."; } }
 
     if (manualPriceMode) { el("priceLabel").textContent = "PRICE (type it in)"; el("toggleBtn").textContent = "use live feeds"; el("livePrice").classList.add("hidden"); el("manualInput").classList.remove("hidden"); el("feedsLine").textContent = ""; }
-    else { el("priceLabel").textContent = "LIVE BTC PRICE (blended)"; el("toggleBtn").textContent = "switch to manual"; el("livePrice").classList.remove("hidden"); el("manualInput").classList.add("hidden"); el("livePrice").textContent = "$" + fmt(blended()); el("livePrice").style.color = (held || divAlarm) ? AMBER : "#111827"; var parts = []; ["coinbase", "kraken", "bitstamp"].forEach(function (k) { var f = feeds[k]; var ok = f.p != null && Date.now() - f.t <= FRESH; parts.push(nameOf(k) + " " + (ok ? "$" + fmt(f.p, 0) : "off")); }); el("feedsLine").textContent = parts.join("   ") + (fs ? ("   \u00b7 spread $" + fmt(fs.spread, 0)) : ""); }
+    else { el("priceLabel").textContent = "LIVE BTC PRICE (blended)"; el("toggleBtn").textContent = "switch to manual"; el("livePrice").classList.remove("hidden"); el("manualInput").classList.add("hidden"); el("livePrice").textContent = "$" + fmt(blended()); el("livePrice").style.color = (held || divAlarm) ? AMBER : "#111827"; var parts = []; ["coinbase", "kraken", "bitstamp", "gemini"].forEach(function (k) { var f = feeds[k]; var ok = f.p != null && Date.now() - f.t <= FRESH; parts.push(nameOf(k) + " " + (ok ? "$" + fmt(f.p, 0) : "off")); }); el("feedsLine").textContent = parts.join("   ") + (fs ? ("   \u00b7 spread $" + fmt(fs.spread, 0)) : ""); }
 
     var price = blended(); var closeTs = effCloseTs(); var now = Date.now();
     var secsLeft = closeTs !== null ? Math.max(0, Math.round((closeTs - now) / 1000)) : null;
@@ -475,6 +516,8 @@
       var isYes = judge >= tgt, diff = judge - tgt;
       word.textContent = isYes ? "YES" : "NO"; word.style.color = isYes ? YES : NO; card.style.borderColor = isYes ? YES : NO; card.style.background = isYes ? "#ecfdf5" : "#fff1f2";
       gap.textContent = (diff >= 0 ? "Above" : "Below") + " the price to beat by $" + fmt(Math.abs(diff));
+      var basisBand = Math.max(8, fs ? fs.spread * 1.5 : 8);
+      if (Math.abs(diff) < basisBand && !(inFinal && r <= 0) && (lockZ == null || lockZ < Z_LOCK)) { word.style.color = GREY; card.style.borderColor = "#e7e8ec"; card.style.background = "#fff"; gap.textContent += ". Too close to call, the tool reads spot while Kalshi settles on a different index, so they can differ by a few dollars right at the line."; }
       jl.textContent = "Judging on $" + fmt(judge) + (inFinal ? (" (avg of " + windowCount + " of 60 secs)") : " (live price)") + (held ? ", price catching up" : "");
       if (secsLeft === null) safe.textContent = "";
       else if (inFinal && r <= 0) { safe.style.color = isYes ? YES : NO; safe.textContent = "Locked and settled. Final average is " + (isYes ? "above" : "below") + " the target."; }
@@ -566,6 +609,8 @@
     else if (lockZ != null && lockZ >= Z_LOCK) vW.textContent = "Cushion is about $" + fmt(actualCushion, 0) + " with " + mmss(secsLeft) + " left. It would take a roughly " + lockZ.toFixed(1) + " sigma swing to flip, settled for all practical purposes.";
     else if (pUp >= 0.55 || pUp <= 0.45) vW.textContent = "Price is $" + fmt(Math.abs((price || 0) - (tgt || 0)), 0) + " " + ((price || 0) >= (tgt || 0) ? "above" : "below") + " with " + mmss(secsLeft) + " left, BTC swinging about $" + fmt(volPerMin, 0) + " a minute. It leans that way but that is not an edge, so sit out.";
     else vW.textContent = "Right on the target with " + mmss(secsLeft) + " left. Genuinely fifty fifty, nothing to bet on.";
+    var vTimer = el("verdictTimer");
+    vTimer.textContent = (secsLeft === null) ? "" : (mmss(secsLeft) + " to close" + (inFinal ? ", final minute" : ""));
 
     if (autoOn && kalshi.ticker && haveTarget && closeTs != null && price != null) {
       try { sbMaybeSnapshot(kalshi.ticker, tgt, closeTs, v, pUp, price, kalshi.yesAsk, kalshi.noAsk, kalshi.upPct, secsLeft); } catch (e) {}
@@ -623,6 +668,7 @@
         hD.textContent = hv.t; hD.style.color = hv.c; hC.style.borderColor = (hv.c === GREY ? "#e5e7eb" : hv.c);
         var where = hT < low ? "below the likely range, Up looks strong" : (hT > high ? "above the likely range, Down looks strong" : "inside the likely range, still a toss");
         hR.textContent = "Projected near $" + fmt(price, 0) + " by " + ampm(hourly.closeTs) + ", likely $" + fmt(low, 0) + " to $" + fmt(high, 0) + ". Target $" + fmt(hT, 0) + " is " + where + ". To flip from here BTC must " + (leadingUp ? "fall" : "rise") + " about $" + fmt(cushionH, 0) + ", odds about " + pctTxt(flipH) + ".";
+        if (hSecs > 4500) { var hh = Math.floor(hSecs / 3600), mm = Math.round((hSecs % 3600) / 60); hR.textContent += " This settle is about " + (hh > 0 ? (hh + "h " + mm + "m") : (mm + "m")) + " out, so the range is wide and it is close to a coin flip until it gets near."; }
         hS.textContent = "BTC $" + fmt(price) + "  \u00b7  target $" + fmt(hT) + "  \u00b7  closes " + ampm(hourly.closeTs) + ", " + mmss(hSecs) + " left" +
           "\nKalshi Up " + (hourly.upPct != null ? hourly.upPct + "%" : "\u2014") + "  \u00b7  value Up " + (hevUp >= 0 ? "+" : "") + Math.round(hevUp) + "c, Down " + (hevDown >= 0 ? "+" : "") + Math.round(hevDown) + "c";
       }
@@ -632,7 +678,7 @@
     try { renderHistory(); } catch (e) {}
   }
 
-  connectCoinbase(); connectKraken(); connectBitstamp();
+  connectCoinbase(); connectKraken(); connectBitstamp(); connectGemini();
   window.addEventListener("resize", scheduleRender);
   try { render(); } catch (e) {} try { drawChart(); } catch (e) {}
 })();
