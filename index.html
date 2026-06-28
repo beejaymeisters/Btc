@@ -209,7 +209,7 @@
   function plTxt(c) { if (c == null) return "n/a"; if (Math.round(c) === 0) return "even"; var dir = c > 0 ? "up" : "down"; var a = Math.abs(c); return dir + " " + (a >= 100 ? ("$" + fmt(a / 100, 2)) : (Math.round(a) + "c")); }
 
   var rafPending = false;
-  function scheduleRender() { if (rafPending) return; rafPending = true; requestAnimationFrame(function () { rafPending = false; render(); drawChart(); }); }
+  function scheduleRender() { if (rafPending) return; rafPending = true; requestAnimationFrame(function () { rafPending = false; try { render(); } catch (e) {} try { drawChart(); } catch (e) {} }); }
 
   // scoreboard storage
   function sbLoad() { try { var raw = localStorage.getItem(SB_KEY); if (raw) { var o = JSON.parse(raw); sb.pending = o.pending || {}; sb.completed = o.completed || []; sb.impulse = o.impulse || { pending: {}, completed: [] }; if (!sb.impulse.pending) sb.impulse.pending = {}; if (!sb.impulse.completed) sb.impulse.completed = []; } } catch (e) { sbStorageOk = false; } }
@@ -285,9 +285,9 @@
     if (changed) sbSave();
   }
 
-  function connectCoinbase() { try { var w = new WebSocket("wss://ws-feed.exchange.coinbase.com"); feeds.coinbase.ws = w; w.onopen = function () { w.send(JSON.stringify({ type: "subscribe", product_ids: ["BTC-USD"], channels: ["ticker"] })); }; w.onmessage = function (ev) { var d = JSON.parse(ev.data); if (d.type === "ticker" && d.price) { feeds.coinbase.p = parseFloat(d.price); feeds.coinbase.t = Date.now(); scheduleRender(); } }; w.onclose = function () { setTimeout(connectCoinbase, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
-  function connectKraken() { try { var w = new WebSocket("wss://ws.kraken.com/v2"); feeds.kraken.ws = w; w.onopen = function () { w.send(JSON.stringify({ method: "subscribe", params: { channel: "ticker", symbol: ["BTC/USD"] } })); }; w.onmessage = function (ev) { var d = JSON.parse(ev.data); if (d.channel === "ticker" && d.data && d.data[0] && d.data[0].last != null) { feeds.kraken.p = parseFloat(d.data[0].last); feeds.kraken.t = Date.now(); scheduleRender(); } }; w.onclose = function () { setTimeout(connectKraken, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
-  function connectBitstamp() { try { var w = new WebSocket("wss://ws.bitstamp.net"); feeds.bitstamp.ws = w; w.onopen = function () { w.send(JSON.stringify({ event: "bts:subscribe", data: { channel: "live_trades_btcusd" } })); }; w.onmessage = function (ev) { var d = JSON.parse(ev.data); if (d.event === "trade" && d.data && d.data.price) { feeds.bitstamp.p = parseFloat(d.data.price); feeds.bitstamp.t = Date.now(); scheduleRender(); } }; w.onclose = function () { setTimeout(connectBitstamp, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
+  function connectCoinbase() { try { var w = new WebSocket("wss://ws-feed.exchange.coinbase.com"); feeds.coinbase.ws = w; w.onopen = function () { w.send(JSON.stringify({ type: "subscribe", product_ids: ["BTC-USD"], channels: ["ticker"] })); }; w.onmessage = function (ev) { try { var d = JSON.parse(ev.data); if (d.type === "ticker" && d.price) { feeds.coinbase.p = parseFloat(d.price); feeds.coinbase.t = Date.now(); scheduleRender(); } } catch (e) {} }; w.onclose = function () { setTimeout(connectCoinbase, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
+  function connectKraken() { try { var w = new WebSocket("wss://ws.kraken.com/v2"); feeds.kraken.ws = w; w.onopen = function () { w.send(JSON.stringify({ method: "subscribe", params: { channel: "ticker", symbol: ["BTC/USD"] } })); }; w.onmessage = function (ev) { try { var d = JSON.parse(ev.data); if (d.channel === "ticker" && d.data && d.data[0] && d.data[0].last != null) { feeds.kraken.p = parseFloat(d.data[0].last); feeds.kraken.t = Date.now(); scheduleRender(); } } catch (e) {} }; w.onclose = function () { setTimeout(connectKraken, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
+  function connectBitstamp() { try { var w = new WebSocket("wss://ws.bitstamp.net"); feeds.bitstamp.ws = w; w.onopen = function () { w.send(JSON.stringify({ event: "bts:subscribe", data: { channel: "live_trades_btcusd" } })); }; w.onmessage = function (ev) { try { var d = JSON.parse(ev.data); if (d.event === "trade" && d.data && d.data.price) { feeds.bitstamp.p = parseFloat(d.data.price); feeds.bitstamp.t = Date.now(); scheduleRender(); } } catch (e) {} }; w.onclose = function () { setTimeout(connectBitstamp, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
   function freshFeeds() { var now = Date.now(), a = []; ["coinbase", "kraken", "bitstamp"].forEach(function (k) { var f = feeds[k]; if (f.p != null && now - f.t <= FRESH) a.push({ k: k, p: f.p }); }); return a; }
   function blendedRaw() { var a = freshFeeds().map(function (x) { return x.p; }); if (!a.length) return null; a.sort(function (x, y) { return x - y; }); return a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2; }
   function blended() { if (manualPriceMode) { var v = el("manualInput").value; return v === "" ? null : parseFloat(v); } var raw = blendedRaw(); if (raw != null) { lastBlended = raw; lastBlendedT = Date.now(); return raw; } if (lastBlended != null && Date.now() - lastBlendedT <= HOLD) return lastBlended; return null; }
@@ -595,7 +595,7 @@
       if (bestEv >= 12) { dHead = vSide; dCol = vSide === "Yes" ? YES : NO; dWhy = "Model has " + sideLong + " cheap by about +" + Math.round(bestEv) + "c versus Kalshi, the strongest the value read gets here. Kalshi usually knows more though, so keep size small and treat it as a lean, not a lock."; }
       else if (bestEv >= 5) { dHead = "Best guess " + vSide + " (sit out)"; dCol = AMBER; dWhy = de.reason; }
       else if (pUp != null && pUp >= 0.45 && pUp <= 0.55) { dHead = "Coin toss (sit out)"; dCol = GREY; dWhy = de.reason; }
-      else { dHead = "Sit it out"; dCol = AMBER; dWhy = de.reason; }
+      else { var lean = (pUp == null) ? "" : (pUp >= 0.90 ? ", Yes near certain" : (pUp >= 0.55 ? ", Yes favored" : (pUp <= 0.10 ? ", No near certain" : ", No favored"))); dHead = (lean === "" ? "Sit it out" : "Sit out" + lean); dCol = AMBER; dWhy = de.reason; }
       dT.textContent = dHead; dT.style.color = dCol; dR.textContent = dWhy;
       dS.textContent = statsBlock("Value: Up " + (de.evUp >= 0 ? "+" : "") + Math.round(de.evUp) + "c, Down " + (de.evDown >= 0 ? "+" : "") + Math.round(de.evDown) + "c after fees" + (cushionSafe != null ? (cushionSafe ? " (cushion is enough)" : " (cushion not enough yet)") : ""));
     }
@@ -634,7 +634,7 @@
 
   connectCoinbase(); connectKraken(); connectBitstamp();
   window.addEventListener("resize", scheduleRender);
-  render(); drawChart();
+  try { render(); } catch (e) {} try { drawChart(); } catch (e) {}
 })();
 </script>
 </body>
