@@ -89,6 +89,7 @@
     <div class="label">GAP SPEED (how fast the cushion is moving)</div>
     <div class="disp" id="gsState" style="color:#9ca3af;">warming up</div>
     <div class="reason" id="gsReason">Gathering a few seconds of price.</div>
+    <div class="reason" id="gsWave"></div>
     <div class="stat" id="gsStats"></div>
   </div>
 
@@ -485,12 +486,15 @@
     var gS = el("gsState"), gR = el("gsReason"), gSt = el("gsStats");
     var pAgo10 = priceAgo(10);
     var move10 = (pAgo10 != null && price != null) ? (price - pAgo10) : null;
+    var p30 = priceAgo(30), p60 = priceAgo(60);
+    var move30 = (p30 != null && price != null) ? (price - p30) : null;
+    var move60 = (p60 != null && price != null) ? (price - p60) : null;
     var pace = move10 != null ? Math.abs(move10) / 10 : null;
     var basePace = sig120 != null ? sig120 * Math.sqrt(10) : (sig30 != null ? sig30 * Math.sqrt(10) : null);
     var speedRatio = (move10 != null && basePace && basePace > 0) ? Math.abs(move10) / basePace : null;
     var burst = maxBurst(30, 4);
     var leaning = (haveTarget && validJudge) ? (judge >= tgt) : null;
-    if (move10 == null) { gS.textContent = "warming up"; gS.style.color = GREY; gR.textContent = "Gathering a few seconds of price to read the speed."; gSt.textContent = ""; }
+    if (move10 == null) { gS.textContent = "warming up"; gS.style.color = GREY; gR.textContent = "Gathering a few seconds of price to read the speed."; gR.style.color = ""; gR.style.fontWeight = ""; el("gsWave").textContent = ""; gSt.textContent = ""; }
     else {
       var sState, sColor;
       if (pump || (speedRatio != null && speedRatio >= 3)) { sState = "Very fast"; sColor = NO; }
@@ -504,6 +508,17 @@
       if (leaning != null && Math.abs(move10) >= 2) { var toward = (leaning && move10 < 0) || (!leaning && move10 > 0); gapEffect = toward ? " Cushion shrinking." : " Cushion widening."; }
       else if (leaning != null) gapEffect = " Cushion steady.";
       gR.textContent = "BTC moved " + moveDir + " in the last 10s, about $" + fmt(pace, 1) + " a second." + gapEffect;
+      gR.style.fontWeight = "700";
+      gR.style.color = Math.abs(move10) < 1 ? "#0f1115" : (move10 > 0 ? YES : NO);
+      var gW = el("gsWave"); gW.style.fontWeight = "700";
+      if (move60 != null) {
+        var d60 = Math.abs(move60) < 3 ? "flat" : (move60 > 0 ? ("up $" + fmt(Math.abs(move60), 0)) : ("down $" + fmt(Math.abs(move60), 0)));
+        var d30 = (move30 != null) ? (Math.abs(move30) < 2 ? "flat" : (move30 > 0 ? ("up $" + fmt(Math.abs(move30), 0)) : ("down $" + fmt(Math.abs(move30), 0)))) : null;
+        var pace60 = Math.abs(move60) / 60;
+        var accel = (pace != null && pace60 > 0.02) ? (pace >= pace60 * 1.6 && Math.abs(move10) >= 2 ? "speeding up" : (pace <= pace60 * 0.5 ? "easing off" : "holding pace")) : "holding pace";
+        gW.style.color = Math.abs(move60) < 3 ? "#0f1115" : (move60 > 0 ? YES : NO);
+        gW.textContent = "Last 60s " + d60 + (d30 ? (", last 30s " + d30) : "") + ". Pace " + accel + ".";
+      } else { gW.textContent = "Building the longer read, a few more seconds."; gW.style.color = "#0f1115"; }
       var burstDir = Math.abs(burst) < 1 ? "barely moved" : (burst > 0 ? ("up $" + fmt(Math.abs(burst), 0)) : ("down $" + fmt(Math.abs(burst), 0)));
       var lines = [];
       lines.push("Fastest move lately, " + burstDir + " in a few seconds.");
@@ -569,11 +584,19 @@
       return L.join("\n");
     }
     if (pUp == null || kalshi.yesAsk == null || kalshi.noAsk == null) { dT.textContent = "warming up"; dT.style.color = GREY; dR.textContent = (sig120 == null && sig30 == null) ? "Gathering a few seconds of price to read volatility." : "Waiting on the Kalshi market price."; dS.textContent = ""; }
-    else if (pump || divAlarm) { dT.textContent = "Sit it out"; dT.style.color = AMBER; dR.textContent = divAlarm ? "The exchanges are out of line, the footprint of a single venue push or a lagging feed. Stand down, this is the setup to stay out of." : "Volatility is spiking. Cushions vanish fast and the read is unreliable. Stand down until it calms."; dS.textContent = statsBlock(""); }
+    else if (pump || divAlarm) { dT.textContent = "Sit out, too unstable"; dT.style.color = AMBER; dR.textContent = divAlarm ? "The exchanges are out of line, the footprint of a single venue push or a lagging feed. Stand down, this is the setup to stay out of." : "Volatility is spiking. Cushions vanish fast and the read is unreliable. Stand down until it calms."; dS.textContent = statsBlock(""); }
     else {
       var de = disposition(pUp, kalshi.yesAsk, kalshi.noAsk, secsLeft);
       var cushionSafe = (safeCushion != null && actualCushion != null) ? (actualCushion >= safeCushion) : null;
-      dT.textContent = de.disp; dT.style.color = de.color; dR.textContent = de.reason;
+      var bestEv = Math.max(de.evUp, de.evDown);
+      var vSide = (de.evUp >= de.evDown) ? "Yes" : "No";
+      var sideLong = vSide === "Yes" ? "Up (Yes)" : "Down (No)";
+      var dHead, dCol, dWhy;
+      if (bestEv >= 12) { dHead = vSide; dCol = vSide === "Yes" ? YES : NO; dWhy = "Model has " + sideLong + " cheap by about +" + Math.round(bestEv) + "c versus Kalshi, the strongest the value read gets here. Kalshi usually knows more though, so keep size small and treat it as a lean, not a lock."; }
+      else if (bestEv >= 5) { dHead = "Best guess " + vSide + " (sit out)"; dCol = AMBER; dWhy = de.reason; }
+      else if (pUp != null && pUp >= 0.45 && pUp <= 0.55) { dHead = "Coin toss (sit out)"; dCol = GREY; dWhy = de.reason; }
+      else { dHead = "Sit it out"; dCol = AMBER; dWhy = de.reason; }
+      dT.textContent = dHead; dT.style.color = dCol; dR.textContent = dWhy;
       dS.textContent = statsBlock("Value: Up " + (de.evUp >= 0 ? "+" : "") + Math.round(de.evUp) + "c, Down " + (de.evDown >= 0 ? "+" : "") + Math.round(de.evDown) + "c after fees" + (cushionSafe != null ? (cushionSafe ? " (cushion is enough)" : " (cushion not enough yet)") : ""));
     }
 
