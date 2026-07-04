@@ -78,6 +78,7 @@
     <div class="verdict" id="consText" style="color:#9ca3af;">warming up</div>
     <div id="consGlance" style="font-size:12.5px; font-weight:800; margin-top:9px; letter-spacing:-0.01em;"></div>
     <div class="reason" id="consWhy" style="margin-top:7px;">Waiting for the three reads.</div>
+    <div class="reason" id="consWhen" style="margin-top:6px; color:#2563eb; font-weight:700;"></div>
   </div>
 
   <div class="card" id="dirCard">
@@ -107,6 +108,7 @@ Warming up means it is still gathering price and market data.</div></details>
     <div class="gap" id="answerGap"></div>
     <div class="judge" id="answerJudge">loading the live market</div>
     <div class="safety" id="answerSafety"></div>
+    <div class="safety" id="leadStrength" style="margin-top:6px; font-weight:700;"></div>
   </div>
 
   <div class="section">Live readings</div>
@@ -242,7 +244,7 @@ Warming up means it is still gathering price and market data.</div></details>
   var timerSource = "kalshi", targetSource = "locked";
   var workingMethod = null, lastPoll = 0, polling = false, lastPollHr = 0, pollingHr = false, startedAt = Date.now(), lastChartDraw = 0, lastRollClose = 0;
 
-  var sb = { pending: {}, completed: [], impulse: { pending: {}, completed: [] }, agree: { pending: {}, completed: [] }, ghost: { pending: {}, completed: [] }, check: { pending: {}, completed: [] } }, sbStorageOk = true;
+  var sb = { pending: {}, completed: [], impulse: { pending: {}, completed: [] }, agree: { pending: {}, completed: [] }, ghost: { pending: {}, completed: [] }, check: { pending: {}, completed: [] }, vghost: { pending: {}, completed: [] } }, sbStorageOk = true;
   var settledCache = [], settledPolled = false, lastSettledPoll = 0, pollingSettled = false;
   var impulseFetching = {}, impulseTries = {};
 
@@ -263,7 +265,7 @@ Warming up means it is still gathering price and market data.</div></details>
   function scheduleRender() { if (rafPending) return; rafPending = true; requestAnimationFrame(function () { rafPending = false; try { render(); } catch (e) {} try { drawChart(); } catch (e) {} }); }
 
   // scoreboard storage
-  function sbLoad() { try { var raw = localStorage.getItem(SB_KEY); if (raw) { var o = JSON.parse(raw); sb.pending = o.pending || {}; sb.completed = o.completed || []; sb.impulse = o.impulse || { pending: {}, completed: [] }; if (!sb.impulse.pending) sb.impulse.pending = {}; if (!sb.impulse.completed) sb.impulse.completed = []; sb.agree = o.agree || { pending: {}, completed: [] }; if (!sb.agree.pending) sb.agree.pending = {}; if (!sb.agree.completed) sb.agree.completed = []; sb.ghost = o.ghost || { pending: {}, completed: [] }; if (!sb.ghost.pending) sb.ghost.pending = {}; if (!sb.ghost.completed) sb.ghost.completed = []; sb.check = o.check || { pending: {}, completed: [] }; if (!sb.check.pending) sb.check.pending = {}; if (!sb.check.completed) sb.check.completed = []; } } catch (e) { sbStorageOk = false; } }
+  function sbLoad() { try { var raw = localStorage.getItem(SB_KEY); if (raw) { var o = JSON.parse(raw); sb.pending = o.pending || {}; sb.completed = o.completed || []; sb.impulse = o.impulse || { pending: {}, completed: [] }; if (!sb.impulse.pending) sb.impulse.pending = {}; if (!sb.impulse.completed) sb.impulse.completed = []; sb.agree = o.agree || { pending: {}, completed: [] }; if (!sb.agree.pending) sb.agree.pending = {}; if (!sb.agree.completed) sb.agree.completed = []; sb.ghost = o.ghost || { pending: {}, completed: [] }; if (!sb.ghost.pending) sb.ghost.pending = {}; if (!sb.ghost.completed) sb.ghost.completed = []; sb.check = o.check || { pending: {}, completed: [] }; if (!sb.check.pending) sb.check.pending = {}; if (!sb.check.completed) sb.check.completed = []; sb.vghost = o.vghost || { pending: {}, completed: [] }; if (!sb.vghost.pending) sb.vghost.pending = {}; if (!sb.vghost.completed) sb.vghost.completed = []; } } catch (e) { sbStorageOk = false; } }
   var VP_KEY = "btc_tool_volprof_v1"; var volProf = null; var lastVolLog = 0;
   function vpLoad() { try { var r = localStorage.getItem(VP_KEY); volProf = r ? JSON.parse(r) : null; } catch (e) {} if (!volProf || !volProf.h || volProf.h.length !== 24) { volProf = { h: [] }; for (var vi = 0; vi < 24; vi++) volProf.h.push({ s: 0, n: 0 }); } }
   function vpSave() { try { localStorage.setItem(VP_KEY, JSON.stringify(volProf)); } catch (e) {} }
@@ -286,6 +288,7 @@ Warming up means it is still gathering price and market data.</div></details>
   function agreeCompletedHas(tk) { for (var i = 0; i < sb.agree.completed.length; i++) { if (sb.agree.completed[i].ticker === tk) return true; } return false; }
   function ghostCompletedHas(tk) { for (var i = 0; i < sb.ghost.completed.length; i++) { if (sb.ghost.completed[i].ticker === tk) return true; } return false; }
   function checkCompletedHas(tk) { for (var i = 0; i < sb.check.completed.length; i++) { if (sb.check.completed[i].ticker === tk) return true; } return false; }
+  function vghostCompletedHas(tk) { for (var i = 0; i < sb.vghost.completed.length; i++) { if (sb.vghost.completed[i].ticker === tk) return true; } return false; }
   function leadHoldRate(secs) { var cp = secs <= 60 ? 60 : (secs <= 120 ? 120 : (secs <= 180 ? 180 : (secs <= 300 ? 300 : null))); if (cp == null) return null; var n = 0, w = 0, a = sb.check.completed; for (var i = 0; i < a.length; i++) { var s = a[i]["s" + cp]; if (s != null) { n++; if (s === a[i].result) w++; } } return { cp: cp, n: n, w: w }; }
   function sbFinalize() {
     var changed = false;
@@ -339,6 +342,18 @@ Warming up means it is still gathering price and market data.</div></details>
       delete sb.check.pending[ctk]; changed = true;
     }
     if (sb.check.completed.length > 800) sb.check.completed = sb.check.completed.slice(-800);
+    for (var vtk in sb.vghost.pending) {
+      if (!sb.vghost.pending.hasOwnProperty(vtk)) continue;
+      var vrec = sb.vghost.pending[vtk];
+      if (Date.now() > vrec.closeTs + 3 * 3600 * 1000) { delete sb.vghost.pending[vtk]; changed = true; continue; }
+      if (Date.now() < vrec.closeTs + 3000) continue;
+      var vres = settledResultFor(vtk);
+      if (vres == null) continue;
+      var vpl = (vres === vrec.side ? (100 - vrec.cost) : -vrec.cost) - feeCents(vrec.cost / 100);
+      sb.vghost.completed.push({ ticker: vtk, closeTs: vrec.closeTs, side: vrec.side, cost: vrec.cost, edge: vrec.edge, result: vres, correct: (vres === vrec.side), pl: vpl });
+      delete sb.vghost.pending[vtk]; changed = true;
+    }
+    if (sb.vghost.completed.length > 800) sb.vghost.completed = sb.vghost.completed.slice(-800);
     if (changed) sbSave();
   }
 
@@ -403,7 +418,7 @@ Warming up means it is still gathering price and market data.</div></details>
   function effCloseTs() { if (timerSource === "kalshi" && kalshi.ok && kalshi.closeTs) return kalshi.closeTs; if (!autoOn) { var v = el("closeInput").value.trim(); if (!/^\d{1,2}:\d{2}$/.test(v)) return localClose(); var p = v.split(":"); var h = parseInt(p[0], 10), m = parseInt(p[1], 10); if (h > 23 || m > 59) return localClose(); var d = new Date(); d.setHours(h, m, 0, 0); if (d.getTime() < Date.now() - 60000) d.setDate(d.getDate() + 1); return d.getTime(); } return localClose(); }
   el("timerBtn").addEventListener("click", function () { timerSource = timerSource === "local" ? "kalshi" : "local"; scheduleRender(); });
   el("targetBtn").addEventListener("click", function () { targetSource = targetSource === "locked" ? "live" : "locked"; scheduleRender(); });
-  el("sbReset").addEventListener("click", function () { if (window.confirm("Reset the scoreboard record? This cannot be undone.")) { sb = { pending: {}, completed: [], impulse: { pending: {}, completed: [] }, agree: { pending: {}, completed: [] }, ghost: { pending: {}, completed: [] }, check: { pending: {}, completed: [] } }; sbSave(); scheduleRender(); } });
+  el("sbReset").addEventListener("click", function () { if (window.confirm("Reset the scoreboard record? This cannot be undone.")) { sb = { pending: {}, completed: [], impulse: { pending: {}, completed: [] }, agree: { pending: {}, completed: [] }, ghost: { pending: {}, completed: [] }, check: { pending: {}, completed: [] }, vghost: { pending: {}, completed: [] } }; sbSave(); scheduleRender(); } });
 
   function routeUrl(m, url) { if (m === 0) return url; if (m === 1) return "https://corsproxy.io/?url=" + encodeURIComponent(url); return "https://api.allorigins.win/raw?url=" + encodeURIComponent(url); }
   function fetchT(url, ms) { var ctrl = new AbortController(); var to = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, ms); return fetch(url, { cache: "no-store", signal: ctrl.signal }).then(function (r) { clearTimeout(to); return r; }, function (e) { clearTimeout(to); throw e; }); }
@@ -530,7 +545,10 @@ Warming up means it is still gathering price and market data.</div></details>
       el("ledgerText").style.color = (Math.round(gTot) === 0 ? GREY : (gTot > 0 ? YES : NO));
       var gpend = 0; for (var gk in sb.ghost.pending) { if (sb.ghost.pending.hasOwnProperty(gk)) gpend++; }
       function gLine(nm, b) { return nm + ", " + b.n + (b.n ? (" trades, " + Math.round(b.w / b.n * 100) + "% right, net " + plTxt(b.pl)) : " trades"); }
-      el("ledgerStats").textContent = [Math.round(gWin / g.length * 100) + "% landed right overall", gLine("Locked", gb.locked), gLine("Leaning", gb.leaning), gLine("Thin", gb.thin), "Last 50, net " + plTxt(gLastPl) + " per contract", (gpend ? ("Waiting to settle, " + gpend) : "")].filter(Boolean).join("\n");
+      var vg = sb.vghost.completed, vgLine;
+      if (!vg.length) { vgLine = "Early value test (5m out, model's cheap side, 5c+ edge), building. It books a paper buy at the real ask whenever that setup appears."; }
+      else { var vgT = 0, vgW = 0; for (var vgi = 0; vgi < vg.length; vgi++) { vgT += vg[vgi].pl; if (vg[vgi].correct) vgW++; } var vgp = 0; for (var vgk in sb.vghost.pending) { if (sb.vghost.pending.hasOwnProperty(vgk)) vgp++; } vgLine = "Early value test (5m out, model's cheap side), " + vg.length + " trades, " + Math.round(vgW / vg.length * 100) + "% right, net " + plTxt(vgT) + " total, average " + plTxt(vgT / vg.length) + " a contract" + (vgp ? (", waiting " + vgp) : "") + ". This is the honest test of going in early when a side looks cheap."; }
+      el("ledgerStats").textContent = [Math.round(gWin / g.length * 100) + "% landed right overall", gLine("Locked", gb.locked), gLine("Leaning", gb.leaning), gLine("Thin", gb.thin), "Last 50, net " + plTxt(gLastPl) + " per contract", (gpend ? ("Waiting to settle, " + gpend) : ""), vgLine].filter(Boolean).join("\n");
     }
   }
 
@@ -605,6 +623,16 @@ Warming up means it is still gathering price and market data.</div></details>
     }
 
     var card = el("answerCard"), word = el("answerWord"), gap = el("answerGap"), jl = el("answerJudge"), safe = el("answerSafety");
+    var lsEl = el("leadStrength"); lsEl.textContent = "";
+    if (haveTarget && validJudge && secsLeft != null && secsLeft > 0 && sdNow != null && sdNow > 0) {
+      var lsCush = Math.abs(judge - tgt); var lsR = lsCush / sdNow; var lsWord, lsCol;
+      if (lsR < 1) { lsWord = "noise, flips easily even when the tape feels calm"; lsCol = NO; }
+      else if (lsR < 2) { lsWord = "a real lean, still flippable"; lsCol = "#d97706"; }
+      else if (lsR < 3) { lsWord = "firming, getting hard to flip"; lsCol = "#0ca678"; }
+      else { lsWord = "lock territory"; lsCol = YES; }
+      lsEl.style.color = lsCol;
+      lsEl.textContent = "Lead strength " + (Math.round(lsR * 10) / 10) + ". Your $" + fmt(lsCush, 0) + " lead against about $" + fmt(sdNow, 0) + " of typical movement in the time left, " + lsWord + ". Under 1 is a coin toss zone, the lock fires near 3. This number already includes how wild BTC is right now, so a $6 lead on a dead calm morning and a $60 lead in a storm can score the same.";
+    }
     el("answerLabel").textContent = inFinal ? "15 MIN SETTLEMENT (final minute average)" : "15 MIN LIVE READ (price vs target)";
     var liveTooClose = false;
     if (haveTarget && validJudge) {
@@ -737,6 +765,7 @@ Warming up means it is still gathering price and market data.</div></details>
       var cushionSafe = (safeCushion != null && actualCushion != null) ? (actualCushion >= safeCushion) : null;
       var bestEv = Math.max(de.evUp, de.evDown);
       var vSide = (de.evUp >= de.evDown) ? "Yes" : "No";
+      if (autoOn && kalshi.ticker && closeTs != null && secsLeft != null && secsLeft <= 300 && secsLeft > 270 && !blocked && bestEv >= 5 && kalshi.yesAsk != null && kalshi.noAsk != null && !sb.vghost.pending[kalshi.ticker] && !vghostCompletedHas(kalshi.ticker)) { try { var vgCost = vSide === "Yes" ? kalshi.yesAsk : kalshi.noAsk; if (vgCost >= 2 && vgCost <= 98) { sb.vghost.pending[kalshi.ticker] = { ticker: kalshi.ticker, closeTs: closeTs, side: vSide === "Yes" ? "yes" : "no", cost: vgCost, edge: Math.round(bestEv), snapAt: Date.now() }; sbSave(); } } catch (e) {} }
       var sideLong = vSide === "Yes" ? "Up (Yes)" : "Down (No)";
       var dHead, dCol, dWhy;
       if (bestEv >= 12) { dHead = vSide; dCol = vSide === "Yes" ? YES : NO; dWhy = "Model has " + sideLong + " cheap by about +" + Math.round(bestEv) + "c versus Kalshi, the strongest the value read gets here. Kalshi usually knows more though, so keep size small and treat it as a lean, not a lock."; }
@@ -770,6 +799,15 @@ Warming up means it is still gathering price and market data.</div></details>
     else if (liveDir != null) { dirW = liveDir.toUpperCase(); dirC = liveDir === "Yes" ? YES : NO; dirR = "Thin. Price is on this side but the odds are near a coin toss."; }
     else { dirW = "PASS"; dirC = GREY; dirR = "Nothing points anywhere yet."; }
     el("dirText").textContent = dirW; el("dirText").style.color = dirC; el("dirWhy").textContent = dirR;
+    var whenTxt = "";
+    var ladW = [{ cp: 300, l: "5m" }, { cp: 180, l: "3m" }, { cp: 120, l: "2m" }, { cp: 60, l: "1m" }];
+    var winCp = null, winLbl = "", winRate = 0;
+    for (var wi = 0; wi < ladW.length; wi++) { var lw = leadHoldRate(ladW[wi].cp); if (lw && lw.n >= 20 && (lw.w / lw.n) >= 0.90) { winCp = ladW[wi].cp; winLbl = ladW[wi].l; winRate = Math.round(lw.w / lw.n * 100); break; } }
+    if (winCp == null) whenTxt = "Timing guide, still building. It names your lock in point once each checkpoint has about 20 settled windows.";
+    else if (secsLeft == null || closeTs == null || secsLeft <= 0) whenTxt = "Timing guide, your lock in point is " + winLbl + " left, where leads have held " + winRate + "% on your record.";
+    else if (secsLeft > winCp) whenTxt = "Timing guide, your lock in point is " + winLbl + " left, in about " + mmss(secsLeft - winCp) + ", around " + ampm(closeTs - winCp * 1000) + ". Leads from there held " + winRate + "% on your record. Earlier leans flip too often.";
+    else whenTxt = "Timing guide, you are past your lock in point of " + winLbl + " left. Leads from here held " + winRate + "% or better on your record. By now Kalshi has it priced, so this confirms direction, it does not create profit.";
+    el("consWhen").textContent = whenTxt;
 
     var hD = el("hrDisp"), hR = el("hrReason"), hS = el("hrStats"), hC = el("hrCard");
     if (hourly.target == null) {
