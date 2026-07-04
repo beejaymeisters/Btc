@@ -80,6 +80,12 @@
     <div class="reason" id="consWhy" style="margin-top:7px;">Waiting for the three reads.</div>
   </div>
 
+  <div class="card" id="dirCard">
+    <div class="label">YES OR NO (direction only, trade view does not vote, not a trade signal)</div>
+    <div class="verdict" id="dirText" style="color:#9aa1ac; font-size:24px;">warming up</div>
+    <div class="reason" id="dirWhy">Waiting for the reads.</div>
+  </div>
+
   <div class="card wide">
     <div class="label">15 MIN DECISION READ (trade view)</div>
     <div class="alarmbar" id="pumpBar"></div>
@@ -219,7 +225,7 @@ Warming up means it is still gathering price and market data.</div></details>
 (function () {
   var YES = "#0ca678", NO = "#e5484d", GREY = "#9aa1ac", AMBER = "#d97706";
   var BASE = "https://api.elections.kalshi.com/trade-api/v2/markets?status=open&limit=50&series_ticker=";
-  var URL_15M = BASE + "KXBTC15M", URL_HR = BASE + "KXBTCD";
+  var URL_15M = BASE + "KXBTC15M", URL_HR = "https://api.elections.kalshi.com/trade-api/v2/markets?status=open&limit=250&series_ticker=KXBTCD";
   var Q = 15 * 60 * 1000, FRESH = 5000, HOLD = 15000, DIV_FLOOR = 20, DIV_MULT = 3;
   var Z_LOCK = 3, Z_ALMOST = 2.3;
   var SB_KEY = "btc_tool_sb_v1", SNAP_LEAD = 60;
@@ -401,7 +407,7 @@ Warming up means it is still gathering price and market data.</div></details>
 
   function routeUrl(m, url) { if (m === 0) return url; if (m === 1) return "https://corsproxy.io/?url=" + encodeURIComponent(url); return "https://api.allorigins.win/raw?url=" + encodeURIComponent(url); }
   function fetchT(url, ms) { var ctrl = new AbortController(); var to = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, ms); return fetch(url, { cache: "no-store", signal: ctrl.signal }).then(function (r) { clearTimeout(to); return r; }, function (e) { clearTimeout(to); throw e; }); }
-  function fetchSeries(url, cb) { var order = workingMethod !== null ? [workingMethod, 0, 1, 2] : [0, 1, 2]; var seen = {}, queue = []; for (var i = 0; i < order.length; i++) { if (!seen[order[i]]) { seen[order[i]] = 1; queue.push(order[i]); } } var idx = 0; (function tryNext() { if (idx >= queue.length) { cb(null); return; } var m = queue[idx++]; fetchT(routeUrl(m, url), 6500).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (data) { if (data && data.markets) { workingMethod = m; cb(data.markets); } else tryNext(); }).catch(function () { tryNext(); }); })(); }
+  function fetchSeries(url, cb, ms) { var order = workingMethod !== null ? [workingMethod, 0, 1, 2] : [0, 1, 2]; var seen = {}, queue = []; for (var i = 0; i < order.length; i++) { if (!seen[order[i]]) { seen[order[i]] = 1; queue.push(order[i]); } } var idx = 0; (function tryNext() { if (idx >= queue.length) { cb(null); return; } var m = queue[idx++]; fetchT(routeUrl(m, url), ms || 6500).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (data) { if (data && data.markets) { workingMethod = m; cb(data.markets); } else tryNext(); }).catch(function () { tryNext(); }); })(); }
   function fetchJson(url, cb) { var queue = [0, 1, 2], idx = 0; (function tryNext() { if (idx >= queue.length) { cb(null); return; } var m = queue[idx++]; fetchT(routeUrl(m, url), 8000).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (data) { if (data != null) cb(data); else tryNext(); }).catch(function () { tryNext(); }); })(); }
   function candleUrl(startMs, endMs) { return "https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=60&start=" + new Date(startMs).toISOString() + "&end=" + new Date(endMs).toISOString(); }
   function candleField(data, tms, idx) { var sec = Math.round(tms / 1000); for (var i = 0; i < data.length; i++) { if (Array.isArray(data[i]) && data[i][0] === sec) return data[i][idx]; } return null; }
@@ -410,7 +416,20 @@ Warming up means it is still gathering price and market data.</div></details>
 
   function pollKalshi() { if (userForcedManual || polling) return; polling = true; lastPoll = Date.now(); fetchSeries(URL_15M, function (markets) { polling = false; if (markets) { var mk = pickActive(markets); if (mk) { kalshi.ok = true; kalshi.tries = 0; kalshi.lastGood = Date.now(); autoOn = true; readMkt(mk, kalshi); kalshi.liveTarget = num(mk.floor_strike); if (cachedTicker !== mk.ticker) { cachedTarget = num(mk.floor_strike); cachedTicker = mk.ticker; } } else failKalshi(); } else failKalshi(); scheduleRender(); }); }
   function failKalshi() { kalshi.tries++; if (cachedTarget === null && kalshi.tries >= 3) autoOn = false; }
-  function pollHourly() { if (pollingHr) return; pollingHr = true; lastPollHr = Date.now(); fetchSeries(URL_HR, function (markets) { pollingHr = false; if (markets) { var mk = pickActive(markets); if (mk) { hourly.none = false; hourly.lastGood = Date.now(); readMkt(mk, hourly); hourly.target = num(mk.floor_strike); } else { hourly.none = true; } } scheduleRender(); }); }
+  function pollHourly() {
+    if (pollingHr) return; pollingHr = true; lastPollHr = Date.now();
+    var sNow = Math.floor(Date.now() / 1000), spans = [7200, 93600, 288000], si = 0, sawData = false;
+    (function tryNext() {
+      if (si >= spans.length) { pollingHr = false; if (sawData) hourly.none = true; scheduleRender(); return; }
+      var u = URL_HR + "&min_close_ts=" + sNow + "&max_close_ts=" + (sNow + spans[si++]);
+      fetchSeries(u, function (m) {
+        if (m) sawData = true;
+        var mk = (m && m.length) ? pickActive(m) : null;
+        if (mk) { pollingHr = false; hourly.none = false; hourly.lastGood = Date.now(); readMkt(mk, hourly); hourly.target = num(mk.floor_strike); scheduleRender(); }
+        else tryNext();
+      }, 12000);
+    })();
+  }
   function pollSettled() {
     if (pollingSettled) return; pollingSettled = true; lastSettledPoll = Date.now();
     var minTs = Math.floor((Date.now() - 30 * 3600 * 1000) / 1000);
@@ -426,7 +445,7 @@ Warming up means it is still gathering price and market data.</div></details>
         try { impulseFinalize(); } catch (e) {}
       }
       scheduleRender();
-    });
+    }, 12000);
   }
 
   el("modeBtn").addEventListener("click", function () { if (autoOn) { autoOn = false; userForcedManual = true; } else { autoOn = true; userForcedManual = false; kalshi.tries = 0; pollKalshi(); } scheduleRender(); });
@@ -444,7 +463,7 @@ Warming up means it is still gathering price and market data.</div></details>
     if (!manualPriceMode && !promptedManual && Date.now() > startedAt + 9000 && blended() === null) { promptedManual = true; goManualPrice("No exchange feed reached your phone. Switched to manual, type the price in."); }
     if (autoOn && kalshi.closeTs && Date.now() >= kalshi.closeTs && !polling && lastRollClose !== kalshi.closeTs) { lastRollClose = kalshi.closeTs; lastPoll = 0; }
     var cts = effCloseTs(); var sLeft = cts !== null ? (cts - Date.now()) / 1000 : null; var interval = (sLeft !== null && sLeft <= 90) ? 2000 : 6000; if (!userForcedManual && Date.now() - lastPoll >= interval) pollKalshi();
-    if (Date.now() - lastPollHr >= 15000) pollHourly();
+    if (Date.now() - lastPollHr >= 30000) pollHourly();
     if (Date.now() - lastSettledPoll >= 30000) pollSettled();
     scheduleRender();
   }, 1000);
@@ -738,6 +757,15 @@ Warming up means it is still gathering price and market data.</div></details>
     else if (ccDir != null && liveTooClose) { conCol = GREY; conHead = "On the line, sit out"; conWhy = "Claude's Call leans " + ccDir + " but price is sitting right on the target, and at the line spot and Kalshi's settlement index can differ by a few dollars. That neutral is information, not a gap, so there is no clean read no matter what the other tiles say."; }
     else { conCol = GREY; conHead = "No clear read yet"; conWhy = "Not enough agreement yet. One or more of the three is a coin toss, too close to call, or still warming up. Sit out."; }
     el("consText").textContent = conHead; el("consText").style.color = conCol; el("consCard").style.borderColor = (conCol === GREY ? "#e5e7eb" : conCol); el("consWhy").textContent = conWhy;
+    var dirW, dirC, dirR;
+    if (blocked) { dirW = "PASS"; dirC = GREY; dirR = "Too unstable to read right now."; }
+    else if (liveTooClose) { dirW = "PASS"; dirC = GREY; dirR = "Price is sitting on the target, no side is ahead by enough to count."; }
+    else if (primaryDir != null) { dirW = primaryDir.toUpperCase(); dirC = primaryDir === "Yes" ? YES : NO; dirR = consLocked ? "Locked. Claude's Call and the live read are on this side and the window is effectively decided." : "Leaning. Claude's Call and the live read are on this side, not locked, a swing can still flip it."; }
+    else if (ccDir != null && liveDir != null && ccDir !== liveDir) { dirW = "PASS"; dirC = GREY; dirR = "The two top reads point opposite ways, so there is no direction."; }
+    else if (ccDir != null) { dirW = ccDir.toUpperCase(); dirC = ccDir === "Yes" ? YES : NO; dirR = "Thin. Only Claude's Call leans this way right now."; }
+    else if (liveDir != null) { dirW = liveDir.toUpperCase(); dirC = liveDir === "Yes" ? YES : NO; dirR = "Thin. Price is on this side but the odds are near a coin toss."; }
+    else { dirW = "PASS"; dirC = GREY; dirR = "Nothing points anywhere yet."; }
+    el("dirText").textContent = dirW; el("dirText").style.color = dirC; el("dirWhy").textContent = dirR;
 
     var hD = el("hrDisp"), hR = el("hrReason"), hS = el("hrStats"), hC = el("hrCard");
     if (hourly.target == null) {
