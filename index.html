@@ -300,7 +300,7 @@ Warming up means it is still gathering price and market data.</div></details>
       var correct = graded ? (rec.side === res) : null;
       var pl = null;
       if (graded) { var cost = rec.side === "yes" ? rec.yesAsk : rec.noAsk; if (cost != null) { pl = (res === rec.side ? (100 - cost) : -cost) - feeCents(cost / 100); } }
-      sb.completed.push({ ticker: tk, closeTs: rec.closeTs, verdict: rec.verdict, kind: rec.kind, side: rec.side, result: res, correct: correct, pl: pl });
+      sb.completed.push({ ticker: tk, closeTs: rec.closeTs, verdict: rec.verdict, kind: rec.kind, side: rec.side, result: res, correct: correct, pl: pl, pUp: rec.pUp, kUp: rec.crowdUp });
       delete sb.pending[tk]; changed = true;
     }
     if (sb.completed.length > 800) sb.completed = sb.completed.slice(-800);
@@ -513,6 +513,10 @@ Warming up means it is still gathering price and market data.</div></details>
     var ag = sb.agree.completed; var agL = 0, agLw = 0, agNl = 0, agNw = 0; for (var ai = 0; ai < ag.length; ai++) { if (ag[ai].locked) { agL++; if (ag[ai].correct) agLw++; } else { agNl++; if (ag[ai].correct) agNw++; } } var agPend = 0; for (var ak in sb.agree.pending) { if (sb.agree.pending.hasOwnProperty(ak)) agPend++; }
     lines.push("Agreement tile, top two agree and locked, " + (agL ? (agLw + " of " + agL + " right, " + Math.round(agLw / agL * 100) + "%") : "none yet") + ". Top two agree but leaning, " + (agNl ? (agNw + " of " + agNl + " right, " + Math.round(agNw / agNl * 100) + "%") : "none yet") + (agPend ? (". Waiting to settle, " + agPend) : ""));
     lines.push("Stood aside, " + aside + " times. Waiting to settle, " + pend);
+    var cal = [{ lo: 0.55, hi: 0.70, n: 0, w: 0, kSum: 0, kn: 0 }, { lo: 0.70, hi: 0.90, n: 0, w: 0, kSum: 0, kn: 0 }, { lo: 0.90, hi: 1.01, n: 0, w: 0, kSum: 0, kn: 0 }];
+    for (var cci = 0; cci < comp.length; cci++) { var ce = comp[cci]; if (ce.side == null || ce.pUp == null) continue; var pS = ce.side === "yes" ? ce.pUp : 1 - ce.pUp; var kS = (ce.kUp != null) ? (ce.side === "yes" ? ce.kUp : 100 - ce.kUp) : null; for (var cbi = 0; cbi < cal.length; cbi++) { var cb = cal[cbi]; if (pS >= cb.lo && pS < cb.hi) { cb.n++; if (ce.correct) cb.w++; if (kS != null) { cb.kSum += kS; cb.kn++; } break; } } }
+    function calTxt(b) { return b.n ? (Math.round(b.w / b.n * 100) + "% of " + b.n + (b.kn ? (", Kalshi avg " + Math.round(b.kSum / b.kn) + "%") : "")) : "building"; }
+    lines.push("Calibration of claimed odds (logs from today). Tool said 55-70%, landed " + calTxt(cal[0]) + ". Said 70-90%, landed " + calTxt(cal[1]) + ". Said 90%+, landed " + calTxt(cal[2]) + ". If landed matches claimed, the plus edges are real. If landed sits near Kalshi's number instead, the model runs hot and the edges are noise.");
     lines.push("Locked pays pennies because certainty is priced near the max. For guesses, the money line matters more than the hit rate, and paper fills flatter it because a real order fills slower and worse. Let the record decide, not a feeling.");
     if (!sbStorageOk) lines.push("Heads up, this browser is not saving the record, it will reset on reload.");
     el("sbBody").textContent = lines.join("\n");
