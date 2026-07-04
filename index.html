@@ -233,7 +233,7 @@ Warming up means it is still gathering price and market data.</div></details>
   var hourly = { target: null, closeTs: null, upPct: null, yesAsk: null, noAsk: null, ticker: null, none: false, lastGood: 0 };
   var cachedTarget = null, cachedTicker = null;
   var autoOn = true, userForcedManual = false;
-  var timerSource = "local", targetSource = "locked";
+  var timerSource = "kalshi", targetSource = "locked";
   var workingMethod = null, lastPoll = 0, polling = false, lastPollHr = 0, pollingHr = false, startedAt = Date.now(), lastChartDraw = 0, lastRollClose = 0;
 
   var sb = { pending: {}, completed: [], impulse: { pending: {}, completed: [] }, agree: { pending: {}, completed: [] }, ghost: { pending: {}, completed: [] }, check: { pending: {}, completed: [] } }, sbStorageOk = true;
@@ -244,6 +244,7 @@ Warming up means it is still gathering price and market data.</div></details>
   function fmt(n, d) { if (d === undefined) d = 2; if (n === null || n === undefined || isNaN(n)) return "\u2014"; return Number(n).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }); }
   function num(x) { var v = parseFloat(x); return isNaN(v) ? null : v; }
   function ampm(ts) { var d = new Date(ts); var h = d.getHours(), m = d.getMinutes(); var ap = h < 12 ? "AM" : "PM"; var hh = h % 12; if (hh === 0) hh = 12; return hh + ":" + ("0" + m).slice(-2) + " " + ap; }
+  function dayWord(ts) { var d = new Date(ts), n = new Date(); if (d.toDateString() === n.toDateString()) return ""; var t = new Date(n.getTime() + 86400000); if (d.toDateString() === t.toDateString()) return "tomorrow "; return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][d.getDay()] + " "; }
   function mmss(s) { if (s == null) return ""; if (s >= 60) return Math.floor(s / 60) + "m " + (s % 60) + "s"; return s + "s"; }
   function nameOf(k) { return k === "coinbase" ? "Coinbase" : k === "kraken" ? "Kraken" : k === "bitstamp" ? "Bitstamp" : "Gemini"; }
   function erf(x) { var t = 1 / (1 + 0.3275911 * Math.abs(x)); var y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x); return x >= 0 ? y : -y; }
@@ -542,12 +543,13 @@ Warming up means it is still gathering price and market data.</div></details>
     if (autoOn) {
       el("autoBlock").classList.remove("hidden"); el("manualBlock").classList.add("hidden");
       var tShown = effTarget();
-      el("marketLabel").textContent = (tShown == null) ? "15 MIN MARKET (reaching Kalshi...)" : (staleKalshi ? "15 MIN MARKET (Kalshi reconnecting, target held)" : "15 MIN MARKET (live from Kalshi)");
+      var rolling = (kalshi.closeTs && Date.now() >= kalshi.closeTs);
+      el("marketLabel").textContent = rolling ? (staleKalshi ? "15 MIN MARKET (window ended, Kalshi slow to answer, still trying)" : "15 MIN MARKET (window ended, pulling the next one)") : ((tShown == null) ? "15 MIN MARKET (reaching Kalshi...)" : (staleKalshi ? "15 MIN MARKET (Kalshi reconnecting, target held)" : "15 MIN MARKET (live from Kalshi)"));
       el("modeBtn").textContent = "type target myself";
-      el("autoTarget").textContent = (tShown !== null) ? ("$" + fmt(tShown)) : "loading"; el("targetBtn").textContent = "target: " + (targetSource === "locked" ? "locked" : "live");
-      el("autoClose").textContent = closeTs !== null ? ("Closes " + ampm(closeTs)) : "Closes: loading";
-      el("autoUp").textContent = (kalshi.upPct !== null) ? ("Kalshi crowd: Up " + kalshi.upPct + "%, Down " + (100 - kalshi.upPct) + "%") : "";
-      if (kalshi.yesAsk !== null && kalshi.noAsk !== null) { el("autoEntry").classList.remove("hidden"); el("autoEntry").textContent = "Entry math: Up costs about " + kalshi.yesAsk + "c to win " + (100 - kalshi.yesAsk) + "c. Down costs about " + kalshi.noAsk + "c to win " + (100 - kalshi.noAsk) + "c. The cheap side is the unlikely one."; } else el("autoEntry").classList.add("hidden");
+      el("autoTarget").textContent = rolling ? "loading next" : ((tShown !== null) ? ("$" + fmt(tShown)) : "loading"); el("targetBtn").textContent = "target: " + (targetSource === "locked" ? "locked" : "live");
+      el("autoClose").textContent = rolling ? "New window loading, a second or two" : (closeTs !== null ? ("Closes " + ampm(closeTs)) : "Closes: loading");
+      el("autoUp").textContent = rolling ? "" : ((kalshi.upPct !== null) ? ("Kalshi crowd: Up " + kalshi.upPct + "%, Down " + (100 - kalshi.upPct) + "%") : "");
+      if (!rolling && kalshi.yesAsk !== null && kalshi.noAsk !== null) { el("autoEntry").classList.remove("hidden"); el("autoEntry").textContent = "Entry math: Up costs about " + kalshi.yesAsk + "c to win " + (100 - kalshi.yesAsk) + "c. Down costs about " + kalshi.noAsk + "c to win " + (100 - kalshi.noAsk) + "c. The cheap side is the unlikely one."; } else el("autoEntry").classList.add("hidden");
       el("autoTicker").textContent = kalshi.ticker || ""; el("timerBtn").textContent = "timer: " + (timerSource === "local" ? "local" : "Kalshi");
     } else { el("autoBlock").classList.add("hidden"); el("manualBlock").classList.remove("hidden"); el("marketLabel").textContent = "15 MIN MARKET (manual)"; el("modeBtn").textContent = "use Kalshi auto"; el("manualNote").textContent = userForcedManual ? "" : "Could not reach Kalshi automatically, enter the target yourself for now."; }
 
@@ -730,9 +732,10 @@ Warming up means it is still gathering price and market data.</div></details>
     else if (primaryDir != null) {
       var allThree = (tvDir === primaryDir), tvNeutral = (tvDir == null), sCol = primaryDir === "Yes" ? YES : NO;
       if (consLocked) { conCol = sCol; conHead = primaryDir.toUpperCase() + ", aligned and locked"; conWhy = (allThree ? "All three point " + primaryDir + ", " : "Claude's Call and the live read point " + primaryDir + ", ") + "and the cushion is locked with " + mmss(secsLeft) + " left. This is the near certain case you noticed. It is usually right, but it is right because the outcome is already decided and priced near the max, so there is no profit left in betting it. Good for confidence, not for money."; }
-      else { conCol = AMBER; conHead = primaryDir.toUpperCase() + ", leaning, not locked"; conWhy = (allThree ? "All three point " + primaryDir + ". " : (tvNeutral ? "Claude's Call and the live read point " + primaryDir + ", the trade view is neutral. " : "Claude's Call and the live read point " + primaryDir + ", the trade view leans the other way. ")) + "Price is on that side with " + mmss(secsLeft) + " left, but it is not locked, so a swing can still flip it. Treat it as a lean, not a sure thing. Agreement near the close is far stronger than agreement early."; }
+      else { conCol = AMBER; conHead = primaryDir.toUpperCase() + ", leaning, not locked"; conWhy = (allThree ? "All three point " + primaryDir + ". " : (tvNeutral ? "Claude's Call and the live read point " + primaryDir + ", the trade view is neutral. " : "Claude's Call and the live read point " + primaryDir + ", the trade view leans the other way, and that is a price read, not a direction vote, so it does not veto the call. ")) + "Price is on that side with " + mmss(secsLeft) + " left, but it is not locked, so a swing can still flip it. Treat it as a lean, not a sure thing. Agreement near the close is far stronger than agreement early."; var lhc = leadHoldRate(secsLeft); if (lhc && lhc.n >= 15) conWhy += " On this device, leads at about this point held " + Math.round(lhc.w / lhc.n * 100) + "% of the time (" + lhc.w + " of " + lhc.n + ")."; }
     }
     else if (ccDir != null && liveDir != null && ccDir !== liveDir) { conCol = GREY; conHead = "Split, sit out"; conWhy = "Claude's Call leans " + ccDir + " but the live read shows " + liveDir + " right now. They disagree, so there is no clean read. Sit out."; }
+    else if (ccDir != null && liveTooClose) { conCol = GREY; conHead = "On the line, sit out"; conWhy = "Claude's Call leans " + ccDir + " but price is sitting right on the target, and at the line spot and Kalshi's settlement index can differ by a few dollars. That neutral is information, not a gap, so there is no clean read no matter what the other tiles say."; }
     else { conCol = GREY; conHead = "No clear read yet"; conWhy = "Not enough agreement yet. One or more of the three is a coin toss, too close to call, or still warming up. Sit out."; }
     el("consText").textContent = conHead; el("consText").style.color = conCol; el("consCard").style.borderColor = (conCol === GREY ? "#e5e7eb" : conCol); el("consWhy").textContent = conWhy;
 
@@ -758,9 +761,9 @@ Warming up means it is still gathering price and market data.</div></details>
         var hv = verdictOf(hpUp, zH, blocked);
         hD.textContent = hv.t; hD.style.color = hv.c; hC.style.borderColor = (hv.c === GREY ? "#e5e7eb" : hv.c);
         var where = hT < low ? "below the likely range, Up looks strong" : (hT > high ? "above the likely range, Down looks strong" : "inside the likely range, still a toss");
-        hR.textContent = "Projected near $" + fmt(price, 0) + " by " + ampm(hourly.closeTs) + ", likely $" + fmt(low, 0) + " to $" + fmt(high, 0) + ". Target $" + fmt(hT, 0) + " is " + where + ". To flip from here BTC must " + (leadingUp ? "fall" : "rise") + " about $" + fmt(cushionH, 0) + ", odds about " + pctTxt(flipH) + ".";
-        if (hSecs > 4500) { var hh = Math.floor(hSecs / 3600), mm = Math.round((hSecs % 3600) / 60); hR.textContent += " This settle is about " + (hh > 0 ? (hh + "h " + mm + "m") : (mm + "m")) + " out, so the range is wide and it is close to a coin flip until it gets near."; }
-        hS.textContent = "BTC $" + fmt(price) + "  \u00b7  target $" + fmt(hT) + "  \u00b7  closes " + ampm(hourly.closeTs) + ", " + mmss(hSecs) + " left" +
+        hR.textContent = "Projected near $" + fmt(price, 0) + " by " + dayWord(hourly.closeTs) + ampm(hourly.closeTs) + ", likely $" + fmt(low, 0) + " to $" + fmt(high, 0) + ". Target $" + fmt(hT, 0) + " is " + where + ". To flip from here BTC must " + (leadingUp ? "fall" : "rise") + " about $" + fmt(cushionH, 0) + ", odds about " + pctTxt(flipH) + ".";
+        if (hSecs > 4500) { var hh = Math.floor(hSecs / 3600), mm = Math.round((hSecs % 3600) / 60); hR.textContent += " This settle is about " + (hh > 0 ? (hh + "h " + mm + "m") : (mm + "m")) + " out, so the range is wide and it is close to a coin flip until it gets near. Kalshi's hourly BTC settles cluster in US weekday daytime, roughly 10am to 5pm ET, so evenings, weekends, and holidays can leave the next settle many hours away. That is Kalshi's schedule, not a freeze."; }
+        hS.textContent = "BTC $" + fmt(price) + "  \u00b7  target $" + fmt(hT) + "  \u00b7  closes " + dayWord(hourly.closeTs) + ampm(hourly.closeTs) + ", " + mmss(hSecs) + " left" +
           "\nKalshi Up " + (hourly.upPct != null ? hourly.upPct + "%" : "\u2014") + "  \u00b7  value Up " + (hevUp >= 0 ? "+" : "") + Math.round(hevUp) + "c, Down " + (hevDown >= 0 ? "+" : "") + Math.round(hevDown) + "c";
       }
     }
