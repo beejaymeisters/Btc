@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Model C, BTC up or down</title>
+<style>
+  :root{ --bg:#f5f6f8; --card:#ffffff; --soft:#f3f4f6; --border:#e7e8ec; --text:#0f1115; --muted:#6b7280; --muted2:#475467; --green:#0ca678; --red:#e5484d; --amber:#d97706; --indigo:#4f46e5; --shadow:0 1px 2px rgba(16,24,40,0.05); }
+  *{ box-sizing:border-box; }
+  html,body{ background:var(--bg); }
+  body{ font-family:-apple-system, system-ui, "Segoe UI", Roboto, sans-serif; margin:0; padding:12px 11px 24px; color:var(--text); -webkit-font-smoothing:antialiased; }
+  .wrap{ max-width:520px; margin:0 auto; }
+  .top{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
+  h1{ font-size:19px; font-weight:800; letter-spacing:-0.02em; margin:0; }
+  h1 .tag{ color:var(--indigo); }
+  .status{ font-size:11px; font-weight:700; display:flex; align-items:center; gap:5px; white-space:nowrap; background:var(--card); border:1px solid var(--border); padding:5px 9px; border-radius:999px; box-shadow:var(--shadow); }
+  .dot{ width:7px; height:7px; border-radius:50%; display:inline-block; background:#9aa1ac; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:13px 15px; box-shadow:var(--shadow); margin:0 0 10px; }
+  .label{ font-size:9.5px; color:var(--muted); margin-bottom:6px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; line-height:1.25; }
+  .verdict{ font-size:26px; font-weight:800; line-height:1.06; letter-spacing:-0.02em; color:#9aa1ac; }
+  .reason{ font-size:11.5px; color:var(--muted2); margin-top:6px; line-height:1.45; }
+  .vtimer{ font-size:13px; font-weight:800; color:var(--indigo); margin-top:9px; letter-spacing:-0.01em; }
+  .bigprice{ font-size:22px; font-weight:800; letter-spacing:-0.02em; }
+  .feeds{ font-size:10.5px; color:var(--muted); margin-top:4px; }
+  .mline{ font-size:14px; margin-bottom:5px; }
+  .mbig{ font-size:19px; font-weight:800; }
+  .count{ font-size:12.5px; margin-top:2px; font-weight:700; color:var(--muted2); }
+  .stat{ font-size:11.5px; color:var(--muted2); margin-top:7px; line-height:1.5; white-space:pre-line; }
+  .gauge{ position:relative; height:64px; margin-top:10px; }
+  .gtrack{ position:absolute; left:0; right:0; top:30px; height:8px; border-radius:99px; background:linear-gradient(90deg,#fca5a5,#e7e8ec 45%,#e7e8ec 55%,#86efac); }
+  .gmid{ position:absolute; top:24px; left:50%; width:1.5px; height:20px; background:#c3c8d0; }
+  .needle{ position:absolute; top:20px; width:2.5px; height:28px; border-radius:2px; transform:translateX(-50%); transition:left 0.5s ease; }
+  .ntag{ position:absolute; transform:translateX(-50%); font-size:9.5px; font-weight:800; white-space:nowrap; transition:left 0.5s ease; }
+  .n-a{ background:#0f1115; } .t-a{ color:#0f1115; top:2px; }
+  .n-c{ background:var(--indigo); } .t-c{ color:var(--indigo); top:52px; }
+  .n-k{ background:var(--amber); } .t-k{ color:var(--amber); top:52px; }
+  .gscale{ display:flex; justify-content:space-between; font-size:9px; color:#aab0b8; margin-top:2px; font-weight:700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1><span class="tag">Model C</span> · BTC up or down</h1>
+    <div class="status"><span class="dot" id="dot"></span><span id="statusText">connecting</span></div>
+  </div>
+
+  <div class="card" id="vCard">
+    <div class="label">MODEL C READ, THIS 15 MIN WINDOW</div>
+    <div class="verdict" id="vText">warming up</div>
+    <div class="reason" id="vWhy">Reading the price, the target, the crowd, and the volatility.</div>
+    <div class="vtimer" id="vTimer"></div>
+  </div>
+
+  <div class="card">
+    <div class="label">THREE OPINIONS, ONE SCALE · CHANCE THE WINDOW ENDS UP</div>
+    <div class="gauge">
+      <div class="gtrack"></div><div class="gmid"></div>
+      <div class="needle n-a" id="nA" style="left:50%"></div><div class="ntag t-a" id="tA" style="left:50%">A —</div>
+      <div class="needle n-c" id="nC" style="left:50%"></div><div class="ntag t-c" id="tC" style="left:50%">C —</div>
+      <div class="needle n-k" id="nK" style="left:50%"></div><div class="ntag t-k" id="tK" style="left:50%">K —</div>
+    </div>
+    <div class="gscale"><span>0% · Down certain</span><span>50%</span><span>100% · Up certain</span></div>
+    <div class="reason">A is your model, the normal curve on the last 120s. C is Model C, fat tails, three volatility horizons, basis uncertainty, and crowd shrinkage. K is the Kalshi crowd. When A and C sit far apart, that gap is the whole argument between the two models, settling one window at a time.</div>
+  </div>
+
+  <div class="card">
+    <div class="label">LIVE BTC PRICE (blended)</div>
+    <div class="bigprice" id="livePrice">—</div>
+    <div class="feeds" id="feedsLine"></div>
+  </div>
+
+  <div class="card">
+    <div class="label" id="mktLabel">15 MIN MARKET (reaching Kalshi...)</div>
+    <div class="mline">Price to beat: <span class="mbig" id="mkTarget">loading</span></div>
+    <div class="mline" id="mkClose"></div>
+    <div class="count" id="mkCount"></div>
+    <div class="feeds" id="mkCrowd"></div>
+  </div>
+
+  <div class="card">
+    <div class="label">MODEL C LEDGER, THIS DEVICE</div>
+    <div class="mbig" id="ledText" style="color:#9aa1ac">Building</div>
+    <div class="stat" id="ledStats">Model C books a paper trade at the real ask whenever its blended probability says a side is 4c or more cheap after the fee, between 10 minutes and 1 minute out, one per window, held to settlement. The server bot keeps the official record, this page keeps its own local copy so you can watch it live.</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var YES = "#0ca678", NO = "#e5484d", GREY = "#9aa1ac", AMBER = "#d97706", INDIGO = "#4f46e5";
+  var URL_15M = "https://api.elections.kalshi.com/trade-api/v2/markets?status=open&limit=50&series_ticker=KXBTC15M";
+  var Q = 15 * 60 * 1000, FRESH = 5000, HOLD = 15000, DIV_FLOOR = 20, DIV_MULT = 3;
+  var MC_EDGE = 4, MC_MAX_SECS = 600, MC_MIN_SECS = 60;
+  var MC_KEY = "btc_modelc_v1";
+
+  var feeds = { coinbase: { p: null, t: 0, ws: null }, kraken: { p: null, t: 0, ws: null }, bitstamp: { p: null, t: 0, ws: null }, gemini: { p: null, t: 0, ws: null } };
+  var samples = [], spreadHist = [], lastBlended = null, lastBlendedT = 0;
+  var kalshi = { ok: false, lastGood: 0, closeTs: null, liveTarget: null, upPct: null, yesAsk: null, noAsk: null, ticker: null };
+  var cachedTarget = null, cachedTicker = null;
+  var workingMethod = null, lastPoll = 0, polling = false, lastSettledPoll = 0, pollingSettled = false;
+  var settledCache = [];
+  var mc = { pending: {}, completed: [] };
+
+  function el(id) { return document.getElementById(id); }
+  function fmt(n, d) { if (d === undefined) d = 2; if (n === null || n === undefined || isNaN(n)) return "\u2014"; return Number(n).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }); }
+  function num(x) { var v = parseFloat(x); return isNaN(v) ? null : v; }
+  function ampm(ts) { var d = new Date(ts); var h = d.getHours(), m = d.getMinutes(); var ap = h < 12 ? "AM" : "PM"; var hh = h % 12; if (hh === 0) hh = 12; return hh + ":" + ("0" + m).slice(-2) + " " + ap; }
+  function mmss(s) { if (s == null) return ""; if (s >= 60) return Math.floor(s / 60) + "m " + (s % 60) + "s"; return s + "s"; }
+  function erf(x) { var t = 1 / (1 + 0.3275911 * Math.abs(x)); var y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x); return x >= 0 ? y : -y; }
+  function normCdf(x) { return 0.5 * (1 + erf(x / Math.SQRT2)); }
+  function tCdf4(x) { var s = x / Math.sqrt(4 + x * x); return 0.5 + 0.75 * s - 0.25 * s * s * s; }
+  function feeCents(p) { if (p <= 0 || p >= 1) return 0; return Math.ceil(7 * p * (1 - p)); }
+  function plTxt(c) { if (c == null) return "n/a"; if (Math.round(c) === 0) return "even"; var dir = c > 0 ? "up" : "down"; var a = Math.abs(c); return dir + " " + (a >= 100 ? ("$" + fmt(a / 100, 2)) : (Math.round(a) + "c")); }
+  function pctTxt(p) { if (p == null) return "\u2014"; var v = p * 100; if (v > 99) return ">99%"; if (v < 1) return "<1%"; return Math.round(v) + "%"; }
+
+  function mcLoad() { try { var r = localStorage.getItem(MC_KEY); if (r) { var o = JSON.parse(r); mc.pending = o.pending || {}; mc.completed = o.completed || []; } } catch (e) {} }
+  function mcSave() { try { localStorage.setItem(MC_KEY, JSON.stringify(mc)); } catch (e) {} }
+  function mcCompletedHas(tk) { for (var i = 0; i < mc.completed.length; i++) { if (mc.completed[i].ticker === tk) return true; } return false; }
+
+  function connectCoinbase() { try { var w = new WebSocket("wss://ws-feed.exchange.coinbase.com"); feeds.coinbase.ws = w; w.onopen = function () { w.send(JSON.stringify({ type: "subscribe", product_ids: ["BTC-USD"], channels: ["ticker"] })); }; w.onmessage = function (ev) { try { var d = JSON.parse(ev.data); if (d.type === "ticker" && d.price) { feeds.coinbase.p = parseFloat(d.price); feeds.coinbase.t = Date.now(); } } catch (e) {} }; w.onclose = function () { setTimeout(connectCoinbase, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
+  function connectKraken() { try { var w = new WebSocket("wss://ws.kraken.com/v2"); feeds.kraken.ws = w; w.onopen = function () { w.send(JSON.stringify({ method: "subscribe", params: { channel: "ticker", symbol: ["BTC/USD"] } })); }; w.onmessage = function (ev) { try { var d = JSON.parse(ev.data); if (d.channel === "ticker" && d.data && d.data[0] && d.data[0].last != null) { feeds.kraken.p = parseFloat(d.data[0].last); feeds.kraken.t = Date.now(); } } catch (e) {} }; w.onclose = function () { setTimeout(connectKraken, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
+  function connectBitstamp() { try { var w = new WebSocket("wss://ws.bitstamp.net"); feeds.bitstamp.ws = w; w.onopen = function () { w.send(JSON.stringify({ event: "bts:subscribe", data: { channel: "live_trades_btcusd" } })); }; w.onmessage = function (ev) { try { var d = JSON.parse(ev.data); if (d.event === "trade" && d.data && d.data.price) { feeds.bitstamp.p = parseFloat(d.data.price); feeds.bitstamp.t = Date.now(); } } catch (e) {} }; w.onclose = function () { setTimeout(connectBitstamp, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
+  function connectGemini() { try { var w = new WebSocket("wss://api.gemini.com/v1/marketdata/BTCUSD?trades=true&bids=false&offers=false"); feeds.gemini.ws = w; w.onmessage = function (ev) { try { var d = JSON.parse(ev.data); if (d.events && d.events.length) { for (var i = d.events.length - 1; i >= 0; i--) { var e = d.events[i]; if (e.type === "trade" && e.price) { feeds.gemini.p = parseFloat(e.price); feeds.gemini.t = Date.now(); break; } } } } catch (e) {} }; w.onclose = function () { setTimeout(connectGemini, 2000); }; w.onerror = function () { try { w.close(); } catch (e) {} }; } catch (e) {} }
+
+  function freshFeeds() { var now = Date.now(), a = []; ["coinbase", "kraken", "bitstamp", "gemini"].forEach(function (k) { var f = feeds[k]; if (f.p != null && now - f.t <= FRESH) a.push({ k: k, p: f.p }); }); return a; }
+  function blendedRaw() { var a = freshFeeds().map(function (x) { return x.p; }); if (!a.length) return null; a.sort(function (x, y) { return x - y; }); return a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2; }
+  function blended() { var raw = blendedRaw(); if (raw != null) { lastBlended = raw; lastBlendedT = Date.now(); return raw; } if (lastBlended != null && Date.now() - lastBlendedT <= HOLD) return lastBlended; return null; }
+  function feedSpread() { var fr = freshFeeds(); if (fr.length < 2) return null; var ps = fr.map(function (x) { return x.p; }); var sorted = ps.slice().sort(function (a, b) { return a - b; }); var med = sorted.length % 2 ? sorted[(sorted.length - 1) / 2] : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2; var maxDev = 0; fr.forEach(function (x) { var dv = Math.abs(x.p - med); if (dv > maxDev) maxDev = dv; }); return { n: fr.length, spread: Math.max.apply(null, ps) - Math.min.apply(null, ps), maxDev: maxDev }; }
+  function baselineSpread() { if (spreadHist.length < 20) return null; var arr = spreadHist.map(function (x) { return x.s; }).sort(function (a, b) { return a - b; }); return arr[Math.floor(arr.length / 2)]; }
+  function volWindow(sec) { var now = Date.now(); var pts = samples.filter(function (s) { return s.t >= now - sec * 1000; }); if (pts.length < 8) return null; var sumsq = 0, n = 0; for (var i = 1; i < pts.length; i++) { var dt = (pts[i].t - pts[i - 1].t) / 1000; if (dt > 0 && dt < 3) { var d = pts[i].p - pts[i - 1].p; sumsq += (d * d) / dt; n++; } } if (n < 6) return null; return Math.sqrt(sumsq / n); }
+
+  function routeUrl(m, url) { if (m === 0) return url; if (m === 1) return "https://corsproxy.io/?url=" + encodeURIComponent(url); return "https://api.allorigins.win/raw?url=" + encodeURIComponent(url); }
+  function fetchT(url, ms) { var ctrl = new AbortController(); var to = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, ms); return fetch(url, { cache: "no-store", signal: ctrl.signal }).then(function (r) { clearTimeout(to); return r; }, function (e) { clearTimeout(to); throw e; }); }
+  function fetchSeries(url, cb, ms) { var order = workingMethod !== null ? [workingMethod, 0, 1, 2] : [0, 1, 2]; var seen = {}, queue = []; for (var i = 0; i < order.length; i++) { if (!seen[order[i]]) { seen[order[i]] = 1; queue.push(order[i]); } } var idx = 0; (function tryNext() { if (idx >= queue.length) { cb(null); return; } var m = queue[idx++]; fetchT(routeUrl(m, url), ms || 6500).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (data) { if (data && data.markets) { workingMethod = m; cb(data.markets); } else tryNext(); }).catch(function () { tryNext(); }); })(); }
+  function pickActive(markets) { var now = Date.now(); var open = markets.filter(function (mk) { var ct = Date.parse(mk.close_time); return ct && ct > now; }); if (!open.length) return null; open.sort(function (a, b) { return Date.parse(a.close_time) - Date.parse(b.close_time); }); var minClose = Date.parse(open[0].close_time); var nearest = open.filter(function (mk) { return Date.parse(mk.close_time) === minClose; }); var ref = blended() || num(nearest[0].floor_strike) || 0; nearest.sort(function (a, b) { return Math.abs((num(a.floor_strike) || 0) - ref) - Math.abs((num(b.floor_strike) || 0) - ref); }); return nearest[0]; }
+  function readMkt(mk) { kalshi.closeTs = Date.parse(mk.close_time); kalshi.ticker = mk.ticker; var bid = num(mk.yes_bid_dollars), ask = num(mk.yes_ask_dollars), last = num(mk.last_price_dollars); var mid = (bid !== null && ask !== null && (bid > 0 || ask > 0)) ? (bid + ask) / 2 : last; kalshi.upPct = mid !== null ? Math.round(mid * 100) : null; kalshi.yesAsk = ask !== null ? Math.round(ask * 100) : kalshi.upPct; var noAsk = num(mk.no_ask_dollars); kalshi.noAsk = noAsk !== null ? Math.round(noAsk * 100) : (kalshi.upPct !== null ? 100 - kalshi.upPct : null); }
+  function pollKalshi() { if (polling) return; polling = true; lastPoll = Date.now(); fetchSeries(URL_15M, function (markets) { polling = false; if (markets) { var mk = pickActive(markets); if (mk) { kalshi.ok = true; kalshi.lastGood = Date.now(); readMkt(mk); kalshi.liveTarget = num(mk.floor_strike); if (cachedTicker !== mk.ticker) { cachedTarget = num(mk.floor_strike); cachedTicker = mk.ticker; } } } }); }
+  function pollSettled() {
+    if (pollingSettled) return; pollingSettled = true; lastSettledPoll = Date.now();
+    var minTs = Math.floor((Date.now() - 30 * 3600 * 1000) / 1000);
+    var url = "https://api.elections.kalshi.com/trade-api/v2/markets?status=settled&limit=200&series_ticker=KXBTC15M&min_close_ts=" + minTs;
+    fetchSeries(url, function (markets) {
+      pollingSettled = false;
+      if (markets) {
+        var arr = [];
+        markets.forEach(function (mk) { var res = (mk.result || "").toLowerCase(); if (res === "yes" || res === "no") arr.push({ ticker: mk.ticker, result: res }); });
+        settledCache = arr;
+        mcFinalize();
+      }
+    }, 12000);
+  }
+  function settledResultFor(tk) { for (var i = 0; i < settledCache.length; i++) { if (settledCache[i].ticker === tk) return settledCache[i].result; } return null; }
+  function mcFinalize() {
+    var changed = false;
+    for (var tk in mc.pending) {
+      if (!mc.pending.hasOwnProperty(tk)) continue;
+      var rec = mc.pending[tk];
+      if (Date.now() > rec.closeTs + 3 * 3600 * 1000) { delete mc.pending[tk]; changed = true; continue; }
+      if (Date.now() < rec.closeTs + 3000) continue;
+      var res = settledResultFor(tk); if (res == null) continue;
+      var pl = (res === rec.side ? (100 - rec.cost) : -rec.cost) - feeCents(rec.cost / 100);
+      mc.completed.push({ ticker: tk, closeTs: rec.closeTs, side: rec.side, cost: rec.cost, edge: rec.edge, pC: rec.pC, pA: rec.pA, result: res, correct: (res === rec.side), pl: pl });
+      delete mc.pending[tk]; changed = true;
+    }
+    if (mc.completed.length > 800) mc.completed = mc.completed.slice(-800);
+    if (changed) mcSave();
+  }
+
+  function modelCPUp(price, tgt, secsLeft, sig30, sig120, sig300, spread, pK) {
+    if (price == null || tgt == null || secsLeft == null) return null;
+    var s2 = 0, wsum = 0;
+    if (sig120 != null) { s2 += 0.5 * sig120 * sig120; wsum += 0.5; }
+    if (sig300 != null) { s2 += 0.3 * sig300 * sig300; wsum += 0.3; }
+    if (sig30 != null) { s2 += 0.2 * sig30 * sig30; wsum += 0.2; }
+    if (wsum === 0) return null;
+    var sigC = Math.sqrt(s2 / wsum);
+    var tau = Math.max(secsLeft, 1);
+    var basis = Math.max(8, (spread != null ? spread * 1.5 : 8)) / 2;
+    var sd = Math.sqrt(sigC * sigC * tau + basis * basis);
+    if (!(sd > 0)) return null;
+    var pModel = tCdf4((price - tgt) / sd);
+    if (pK == null) return pModel;
+    var w = secsLeft > 300 ? 0.35 : (secsLeft > 120 ? 0.5 : 0.7);
+    return w * pModel + (1 - w) * Math.min(0.99, Math.max(0.01, pK));
+  }
+
+  function setNeedle(nid, tid, letter, p, col) {
+    var n = el(nid), t = el(tid);
+    if (p == null) { n.style.opacity = 0.25; t.textContent = letter + " \u2014"; t.style.left = "50%"; n.style.left = "50%"; return; }
+    var pct = Math.min(99, Math.max(1, p * 100));
+    n.style.opacity = 1; n.style.left = pct + "%"; t.style.left = pct + "%"; t.textContent = letter + " " + Math.round(pct) + "%";
+    if (col) { n.style.background = col; t.style.color = col; }
+  }
+
+  function tick() {
+    var now = Date.now();
+    ["coinbase", "kraken", "bitstamp", "gemini"].forEach(function (k) { var f = feeds[k]; if (f.ws && f.ws.readyState === 1 && f.t > 0 && now - f.t > 22000) { try { f.ws.close(); } catch (e) {} } });
+    var price = blended();
+    if (price !== null && !isNaN(price)) { samples.push({ t: now, p: price }); samples = samples.filter(function (s) { return s.t >= now - 700000; }); }
+    var fs0 = feedSpread(); if (fs0) { spreadHist.push({ t: now, s: fs0.spread }); spreadHist = spreadHist.filter(function (x) { return x.t >= now - 90000; }); }
+
+    var closeTs = (kalshi.ok && kalshi.closeTs) ? kalshi.closeTs : Math.ceil((now + 1) / Q) * Q;
+    var sLeft = (closeTs - now) / 1000;
+    if (now - lastPoll >= (sLeft <= 90 ? 2000 : 6000)) pollKalshi();
+    if (now - lastSettledPoll >= 30000) pollSettled();
+    var secsLeft = Math.max(0, Math.round(sLeft));
+
+    var tgt = cachedTarget != null ? cachedTarget : kalshi.liveTarget;
+    var haveTarget = tgt !== null && tgt !== undefined && !isNaN(tgt);
+
+    var sig30 = volWindow(30), sig120 = volWindow(120), sig180 = volWindow(180), sig300 = volWindow(300);
+    var pump = (sig30 != null && sig180 != null && sig180 > 0 && sig30 > 1.7 * sig180 && sig30 * Math.sqrt(60) > 30);
+    var base = baselineSpread(); var divAlarm = false;
+    if (fs0 && fs0.n >= 2 && base != null) { var thr = Math.max(DIV_FLOOR, DIV_MULT * base); if (fs0.maxDev > thr) divAlarm = true; }
+    var blocked = pump || divAlarm;
+
+    var tau = Math.max(secsLeft, 1);
+    var sdA = (sig120 != null) ? sig120 * Math.sqrt(tau) : null;
+    var pA = (sdA != null && sdA > 0 && haveTarget && price != null) ? normCdf((price - tgt) / sdA) : null;
+    var pK = kalshi.upPct != null ? kalshi.upPct / 100 : null;
+    var pC = (haveTarget && price != null && secsLeft > 0) ? modelCPUp(price, tgt, secsLeft, sig30, sig120, sig300, fs0 ? fs0.spread : null, pK) : null;
+
+    // status
+    var fresh = freshFeeds();
+    el("statusText").textContent = fresh.length ? ("live (" + fresh.length + " feed" + (fresh.length > 1 ? "s" : "") + ")") : "connecting";
+    el("statusText").style.color = fresh.length ? YES : GREY;
+    el("dot").style.background = fresh.length ? YES : GREY;
+
+    // price card
+    el("livePrice").textContent = price != null ? ("$" + fmt(price)) : "\u2014";
+    var parts = []; ["coinbase", "kraken", "bitstamp", "gemini"].forEach(function (k) { var f = feeds[k]; var ok = f.p != null && now - f.t <= FRESH; parts.push((k === "coinbase" ? "Coinbase" : k === "kraken" ? "Kraken" : k === "bitstamp" ? "Bitstamp" : "Gemini") + " " + (ok ? "$" + fmt(f.p, 0) : "off")); });
+    el("feedsLine").textContent = parts.join("   ") + (fs0 ? ("   \u00b7 spread $" + fmt(fs0.spread, 0)) : "");
+
+    // market card
+    el("mktLabel").textContent = kalshi.ok ? "15 MIN MARKET (live from Kalshi)" : "15 MIN MARKET (reaching Kalshi...)";
+    el("mkTarget").textContent = haveTarget ? ("$" + fmt(tgt)) : "loading";
+    el("mkClose").textContent = "Closes " + ampm(closeTs);
+    el("mkCount").textContent = secsLeft > 0 ? (mmss(secsLeft) + " to close" + (secsLeft <= 60 ? "  \u00b7  FINAL MINUTE" : "")) : "window closed, loading next";
+    el("mkCrowd").textContent = (kalshi.upPct != null) ? ("Kalshi crowd: Up " + kalshi.upPct + "%, Down " + (100 - kalshi.upPct) + "%  \u00b7  Up costs " + kalshi.yesAsk + "c, Down costs " + kalshi.noAsk + "c") : "";
+
+    // gauge
+    setNeedle("nA", "tA", "A", pA, "#0f1115");
+    setNeedle("nC", "tC", "C", pC, INDIGO);
+    setNeedle("nK", "tK", "K", pK, AMBER);
+
+    // model C verdict and trade
+    var vT = el("vText"), vW = el("vWhy"), vC = el("vCard");
+    if (blocked) { vT.textContent = "Sit out, too unstable"; vT.style.color = AMBER; vC.style.borderColor = AMBER; vW.textContent = pump ? "Volatility is spiking, the read cannot be trusted in a pump." : "The exchanges are out of line, possible single venue push. Stand down."; }
+    else if (pC == null || kalshi.yesAsk == null || kalshi.noAsk == null) { vT.textContent = "warming up"; vT.style.color = GREY; vC.style.borderColor = "#e5e7eb"; vW.textContent = "Reading the price, the target, the crowd, and the volatility."; }
+    else {
+      var evUp = pC * 100 - kalshi.yesAsk - feeCents(kalshi.yesAsk / 100);
+      var evDown = (1 - pC) * 100 - kalshi.noAsk - feeCents(kalshi.noAsk / 100);
+      var bestEv = Math.max(evUp, evDown);
+      var side = evUp >= evDown ? "yes" : "no";
+      var inBand = secsLeft <= MC_MAX_SECS && secsLeft > MC_MIN_SECS;
+      if (bestEv >= MC_EDGE && inBand) {
+        vT.textContent = (side === "yes" ? "Value: Up (Yes)" : "Value: Down (No)") + " +" + Math.round(bestEv) + "c";
+        vT.style.color = side === "yes" ? YES : NO; vC.style.borderColor = vT.style.color;
+        vW.textContent = "Model C sees " + (side === "yes" ? "Up" : "Down") + " about " + Math.round(bestEv) + "c cheap after the fee. It books this as a paper trade, one per window. Kalshi usually knows more, so this is a measured bet, not a promise. Model C odds Up " + pctTxt(pC) + ", your model says " + pctTxt(pA) + ", crowd " + pctTxt(pK) + ".";
+        var tk = kalshi.ticker;
+        if (tk && !mc.pending[tk] && !mcCompletedHas(tk)) { var cost = side === "yes" ? kalshi.yesAsk : kalshi.noAsk; if (cost >= 2 && cost <= 98) { mc.pending[tk] = { ticker: tk, closeTs: closeTs, side: side, cost: cost, edge: Math.round(bestEv), pC: pC, pA: pA, secsLeft: secsLeft, snapAt: now }; mcSave(); } }
+      } else {
+        var lean = pC >= 0.55 ? "leans Up" : (pC <= 0.45 ? "leans Down" : "coin toss");
+        vT.textContent = "Sit it out"; vT.style.color = AMBER; vC.style.borderColor = AMBER;
+        vW.textContent = "Model C " + lean + " at " + pctTxt(pC) + " Up, but " + (inBand ? ("no side is more than " + MC_EDGE + "c cheap after the fee.") : (secsLeft <= MC_MIN_SECS ? "the final minute is outside its trading band." : "it does not trade this far out.")) + " Your model says " + pctTxt(pA) + ", the crowd " + pctTxt(pK) + ".";
+      }
+    }
+    el("vTimer").textContent = secsLeft > 0 ? (mmss(secsLeft) + " to close") : "loading next 15 min";
+
+    // ledger card
+    var g = mc.completed;
+    if (!g.length) { el("ledText").textContent = "Building"; el("ledText").style.color = GREY; }
+    else {
+      var tot = 0, w = 0; for (var i = 0; i < g.length; i++) { tot += g[i].pl; if (g[i].correct) w++; }
+      el("ledText").textContent = "Net " + plTxt(tot) + " per contract over " + g.length + " trades";
+      el("ledText").style.color = Math.round(tot) === 0 ? GREY : (tot > 0 ? YES : NO);
+      var pend = 0; for (var k in mc.pending) { if (mc.pending.hasOwnProperty(k)) pend++; }
+      var cn = 0, cSum = 0, cWin = 0;
+      g.forEach(function (x) { if (x.pC != null) { var pS = x.side === "yes" ? x.pC : 1 - x.pC; cn++; cSum += pS; if (x.correct) cWin++; } });
+      el("ledStats").textContent = Math.round(w / g.length * 100) + "% landed right" + (pend ? (", waiting to settle " + pend) : "") + (cn ? ("\nCalibration, claimed " + Math.round(cSum / cn * 100) + "% on average, landed " + Math.round(cWin / cn * 100) + "%. Claimed near landed means the model is honest.") : "") + "\nThe server bot keeps the official record. This page keeps its own local copy so you can watch Model C live beside your page.";
+    }
+  }
+
+  mcLoad();
+  connectCoinbase(); connectKraken(); connectBitstamp(); connectGemini();
+  pollKalshi(); pollSettled();
+  setInterval(tick, 1000);
+})();
+</script>
+</body>
+</html>
