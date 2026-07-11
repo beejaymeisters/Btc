@@ -350,7 +350,8 @@ Warming up means it is still gathering price and market data.</div></details>
       var vres = settledResultFor(vtk);
       if (vres == null) continue;
       var vpl = (vres === vrec.side ? (100 - vrec.cost) : -vrec.cost) - feeCents(vrec.cost / 100);
-      sb.vghost.completed.push({ ticker: vtk, closeTs: vrec.closeTs, side: vrec.side, cost: vrec.cost, edge: vrec.edge, result: vres, correct: (vres === vrec.side), pl: vpl });
+      var vpl2 = (vrec.fill != null) ? ((vres === vrec.side ? (100 - vrec.fill) : -vrec.fill) - feeCents(vrec.fill / 100)) : null;
+      sb.vghost.completed.push({ ticker: vtk, closeTs: vrec.closeTs, side: vrec.side, cost: vrec.cost, edge: vrec.edge, fill: (vrec.fill != null ? vrec.fill : null), result: vres, correct: (vres === vrec.side), pl: vpl, pl2: vpl2 });
       delete sb.vghost.pending[vtk]; changed = true;
     }
     if (sb.vghost.completed.length > 800) sb.vghost.completed = sb.vghost.completed.slice(-800);
@@ -541,14 +542,14 @@ Warming up means it is still gathering price and market data.</div></details>
       var gTot = 0, gWin = 0, gb = { locked: { n: 0, w: 0, pl: 0 }, leaning: { n: 0, w: 0, pl: 0 }, thin: { n: 0, w: 0, pl: 0 } };
       for (var gi = 0; gi < g.length; gi++) { var gr = g[gi]; gTot += gr.pl; if (gr.correct) gWin++; var bb = gb[gr.tag] || gb.leaning; bb.n++; if (gr.correct) bb.w++; bb.pl += gr.pl; }
       var gLast = g.slice(-50), gLastPl = 0; for (var gl = 0; gl < gLast.length; gl++) gLastPl += gLast[gl].pl;
-      el("ledgerText").textContent = "Net " + plTxt(gTot) + " per contract over " + g.length + " ghost trades";
+      el("ledgerText").textContent = "Average " + plTxt(gTot / g.length) + " a contract over " + g.length + " ghost trades";
       el("ledgerText").style.color = (Math.round(gTot) === 0 ? GREY : (gTot > 0 ? YES : NO));
       var gpend = 0; for (var gk in sb.ghost.pending) { if (sb.ghost.pending.hasOwnProperty(gk)) gpend++; }
       function gLine(nm, b) { return nm + ", " + b.n + (b.n ? (" trades, " + Math.round(b.w / b.n * 100) + "% right, net " + plTxt(b.pl)) : " trades"); }
       var vg = sb.vghost.completed, vgLine;
       if (!vg.length) { vgLine = "Early value test (5m out, model's cheap side, 5c+ edge), building. It books a paper buy at the real ask whenever that setup appears."; }
-      else { var vgT = 0, vgW = 0; for (var vgi = 0; vgi < vg.length; vgi++) { vgT += vg[vgi].pl; if (vg[vgi].correct) vgW++; } var vgp = 0; for (var vgk in sb.vghost.pending) { if (sb.vghost.pending.hasOwnProperty(vgk)) vgp++; } vgLine = "Early value test (5m out, model's cheap side), " + vg.length + " trades, " + Math.round(vgW / vg.length * 100) + "% right, net " + plTxt(vgT) + " total, average " + plTxt(vgT / vg.length) + " a contract" + (vgp ? (", waiting " + vgp) : "") + ". This is the honest test of going in early when a side looks cheap."; }
-      el("ledgerStats").textContent = [Math.round(gWin / g.length * 100) + "% landed right overall", gLine("Locked", gb.locked), gLine("Leaning", gb.leaning), gLine("Thin", gb.thin), "Last 50, net " + plTxt(gLastPl) + " per contract", (gpend ? ("Waiting to settle, " + gpend) : ""), vgLine].filter(Boolean).join("\n");
+      else { var vgT = 0, vgW = 0, v2n = 0, v2T = 0; for (var vgi = 0; vgi < vg.length; vgi++) { vgT += vg[vgi].pl; if (vg[vgi].correct) vgW++; if (vg[vgi].pl2 != null) { v2n++; v2T += vg[vgi].pl2; } } var vgp = 0; for (var vgk in sb.vghost.pending) { if (sb.vghost.pending.hasOwnProperty(vgk)) vgp++; } vgLine = "Early value test (5m out, model's cheap side), " + vg.length + " trades, " + Math.round(vgW / vg.length * 100) + "% right, net " + plTxt(vgT) + " total, average " + plTxt(vgT / vg.length) + " a contract" + (vgp ? (", waiting " + vgp) : "") + ". This is the honest test of going in early when a side looks cheap." + (v2n ? (" At the next quote instead, the fill a real order actually gets, " + v2n + " trades, net " + plTxt(v2T) + " total, average " + plTxt(v2T / v2n) + " a contract. If this second number is much worse, the paper edge was stale quotes, not the market.") : " The next quote fill column starts logging with this version."); }
+      el("ledgerStats").textContent = ["Net " + plTxt(gTot) + " total. " + Math.round(gWin / g.length * 100) + "% landed right overall", gLine("Locked", gb.locked), gLine("Leaning", gb.leaning), gLine("Thin", gb.thin), "Last 50, net " + plTxt(gLastPl) + " total", (gpend ? ("Waiting to settle, " + gpend) : ""), vgLine].filter(Boolean).join("\n");
     }
   }
 
@@ -765,7 +766,8 @@ Warming up means it is still gathering price and market data.</div></details>
       var cushionSafe = (safeCushion != null && actualCushion != null) ? (actualCushion >= safeCushion) : null;
       var bestEv = Math.max(de.evUp, de.evDown);
       var vSide = (de.evUp >= de.evDown) ? "Yes" : "No";
-      if (autoOn && kalshi.ticker && closeTs != null && secsLeft != null && secsLeft <= 300 && secsLeft > 270 && !blocked && bestEv >= 5 && kalshi.yesAsk != null && kalshi.noAsk != null && !sb.vghost.pending[kalshi.ticker] && !vghostCompletedHas(kalshi.ticker)) { try { var vgCost = vSide === "Yes" ? kalshi.yesAsk : kalshi.noAsk; if (vgCost >= 2 && vgCost <= 98) { sb.vghost.pending[kalshi.ticker] = { ticker: kalshi.ticker, closeTs: closeTs, side: vSide === "Yes" ? "yes" : "no", cost: vgCost, edge: Math.round(bestEv), snapAt: Date.now() }; sbSave(); } } catch (e) {} }
+      if (autoOn && kalshi.ticker && closeTs != null && secsLeft != null && secsLeft <= 300 && secsLeft > 270 && !blocked && bestEv >= 5 && kalshi.yesAsk != null && kalshi.noAsk != null && !sb.vghost.pending[kalshi.ticker] && !vghostCompletedHas(kalshi.ticker)) { try { var vgCost = vSide === "Yes" ? kalshi.yesAsk : kalshi.noAsk; if (vgCost >= 2 && vgCost <= 98) { sb.vghost.pending[kalshi.ticker] = { ticker: kalshi.ticker, closeTs: closeTs, side: vSide === "Yes" ? "yes" : "no", cost: vgCost, edge: Math.round(bestEv), snapAt: Date.now(), fill: null }; sbSave(); } } catch (e) {} }
+      try { var vgp2 = sb.vghost.pending[kalshi.ticker]; if (vgp2 && vgp2.fill == null && kalshi.lastGood && vgp2.snapAt && kalshi.lastGood > vgp2.snapAt + 1500 && kalshi.yesAsk != null && kalshi.noAsk != null) { vgp2.fill = vgp2.side === "yes" ? kalshi.yesAsk : kalshi.noAsk; vgp2.fillAt = Date.now(); sbSave(); } } catch (e) {}
       var sideLong = vSide === "Yes" ? "Up (Yes)" : "Down (No)";
       var dHead, dCol, dWhy;
       if (bestEv >= 12) { dHead = vSide; dCol = vSide === "Yes" ? YES : NO; dWhy = "Model has " + sideLong + " cheap by about +" + Math.round(bestEv) + "c versus Kalshi, the strongest the value read gets here. Kalshi usually knows more though, so keep size small and treat it as a lean, not a lock."; }
