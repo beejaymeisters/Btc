@@ -90,7 +90,7 @@
   var URL_15M = "https://api.elections.kalshi.com/trade-api/v2/markets?status=open&limit=50&series_ticker=KXBTC15M";
   var Q = 15 * 60 * 1000, FRESH = 5000, HOLD = 15000, DIV_FLOOR = 20, DIV_MULT = 3;
   var MC_EDGE = 4, MC_MAX_SECS = 600, MC_MIN_SECS = 60;
-  var MC_KEY = "btc_modelc_v1";
+  var MC_KEY = "btc_modelc_v2"; // v1 abandoned, it was contaminated by stale proxy quotes
 
   var feeds = { coinbase: { p: null, t: 0, ws: null }, kraken: { p: null, t: 0, ws: null }, bitstamp: { p: null, t: 0, ws: null }, gemini: { p: null, t: 0, ws: null } };
   var samples = [], spreadHist = [], lastBlended = null, lastBlendedT = 0;
@@ -128,7 +128,7 @@
   function baselineSpread() { if (spreadHist.length < 20) return null; var arr = spreadHist.map(function (x) { return x.s; }).sort(function (a, b) { return a - b; }); return arr[Math.floor(arr.length / 2)]; }
   function volWindow(sec) { var now = Date.now(); var pts = samples.filter(function (s) { return s.t >= now - sec * 1000; }); if (pts.length < 8) return null; var sumsq = 0, n = 0; for (var i = 1; i < pts.length; i++) { var dt = (pts[i].t - pts[i - 1].t) / 1000; if (dt > 0 && dt < 3) { var d = pts[i].p - pts[i - 1].p; sumsq += (d * d) / dt; n++; } } if (n < 6) return null; return Math.sqrt(sumsq / n); }
 
-  function routeUrl(m, url) { if (m === 0) return url; if (m === 1) return "https://corsproxy.io/?url=" + encodeURIComponent(url); return "https://api.allorigins.win/raw?url=" + encodeURIComponent(url); }
+  function routeUrl(m, url) { var busted = url + (url.indexOf("?") >= 0 ? "&" : "?") + "_ts=" + Date.now(); if (m === 0) return busted; if (m === 1) return "https://corsproxy.io/?url=" + encodeURIComponent(busted); return "https://api.allorigins.win/raw?url=" + encodeURIComponent(busted); }
   function fetchT(url, ms) { var ctrl = new AbortController(); var to = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, ms); return fetch(url, { cache: "no-store", signal: ctrl.signal }).then(function (r) { clearTimeout(to); return r; }, function (e) { clearTimeout(to); throw e; }); }
   function fetchSeries(url, cb, ms) { var order = workingMethod !== null ? [workingMethod, 0, 1, 2] : [0, 1, 2]; var seen = {}, queue = []; for (var i = 0; i < order.length; i++) { if (!seen[order[i]]) { seen[order[i]] = 1; queue.push(order[i]); } } var idx = 0; (function tryNext() { if (idx >= queue.length) { cb(null); return; } var m = queue[idx++]; fetchT(routeUrl(m, url), ms || 6500).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (data) { if (data && data.markets) { workingMethod = m; cb(data.markets); } else tryNext(); }).catch(function () { tryNext(); }); })(); }
   function pickActive(markets) { var now = Date.now(); var open = markets.filter(function (mk) { var ct = Date.parse(mk.close_time); return ct && ct > now; }); if (!open.length) return null; open.sort(function (a, b) { return Date.parse(a.close_time) - Date.parse(b.close_time); }); var minClose = Date.parse(open[0].close_time); var nearest = open.filter(function (mk) { return Date.parse(mk.close_time) === minClose; }); var ref = blended() || num(nearest[0].floor_strike) || 0; nearest.sort(function (a, b) { return Math.abs((num(a.floor_strike) || 0) - ref) - Math.abs((num(b.floor_strike) || 0) - ref); }); return nearest[0]; }
@@ -235,7 +235,8 @@
     el("mkTarget").textContent = haveTarget ? ("$" + fmt(tgt)) : "loading";
     el("mkClose").textContent = "Closes " + ampm(closeTs);
     el("mkCount").textContent = secsLeft > 0 ? (mmss(secsLeft) + " to close" + (secsLeft <= 60 ? "  \u00b7  FINAL MINUTE" : "")) : "window closed, loading next";
-    el("mkCrowd").textContent = (kalshi.upPct != null) ? ("Kalshi crowd: Up " + kalshi.upPct + "%, Down " + (100 - kalshi.upPct) + "%  \u00b7  Up costs " + kalshi.yesAsk + "c, Down costs " + kalshi.noAsk + "c") : "";
+    var qAge = kalshi.lastGood ? Math.round((now - kalshi.lastGood) / 1000) : null;
+    el("mkCrowd").textContent = (kalshi.upPct != null) ? ("Kalshi crowd: Up " + kalshi.upPct + "%, Down " + (100 - kalshi.upPct) + "%  \u00b7  Up costs " + kalshi.yesAsk + "c, Down costs " + kalshi.noAsk + "c" + (qAge != null ? ("  \u00b7  quote " + qAge + "s old" + (qAge > 15 ? ", STALE, not trading on this" : "")) : "")) : "";
 
     // gauge
     setNeedle("nA", "tA", "A", pA, "#0f1115");
@@ -257,7 +258,8 @@
         vT.style.color = side === "yes" ? YES : NO; vC.style.borderColor = vT.style.color;
         vW.textContent = "Model C sees " + (side === "yes" ? "Up" : "Down") + " about " + Math.round(bestEv) + "c cheap after the fee. It books this as a paper trade, one per window. Kalshi usually knows more, so this is a measured bet, not a promise. Model C odds Up " + pctTxt(pC) + ", your model says " + pctTxt(pA) + ", crowd " + pctTxt(pK) + ".";
         var tk = kalshi.ticker;
-        if (tk && !mc.pending[tk] && !mcCompletedHas(tk)) { var cost = side === "yes" ? kalshi.yesAsk : kalshi.noAsk; if (cost >= 2 && cost <= 98) { mc.pending[tk] = { ticker: tk, closeTs: closeTs, side: side, cost: cost, edge: Math.round(bestEv), pC: pC, pA: pA, secsLeft: secsLeft, snapAt: now }; mcSave(); } }
+        var quoteFresh = kalshi.lastGood && (now - kalshi.lastGood <= 15000);
+        if (tk && quoteFresh && !mc.pending[tk] && !mcCompletedHas(tk)) { var cost = side === "yes" ? kalshi.yesAsk : kalshi.noAsk; if (cost >= 2 && cost <= 98) { mc.pending[tk] = { ticker: tk, closeTs: closeTs, side: side, cost: cost, edge: Math.round(bestEv), pC: pC, pA: pA, secsLeft: secsLeft, snapAt: now }; mcSave(); } }
       } else {
         var lean = pC >= 0.55 ? "leans Up" : (pC <= 0.45 ? "leans Down" : "coin toss");
         vT.textContent = "Sit it out"; vT.style.color = AMBER; vC.style.borderColor = AMBER;
@@ -271,7 +273,7 @@
     if (!g.length) { el("ledText").textContent = "Building"; el("ledText").style.color = GREY; }
     else {
       var tot = 0, w = 0; for (var i = 0; i < g.length; i++) { tot += g[i].pl; if (g[i].correct) w++; }
-      el("ledText").textContent = "Net " + plTxt(tot) + " per contract over " + g.length + " trades";
+      el("ledText").textContent = "Net " + plTxt(tot) + " total over " + g.length + " trades, average " + plTxt(tot / g.length) + " a contract";
       el("ledText").style.color = Math.round(tot) === 0 ? GREY : (tot > 0 ? YES : NO);
       var pend = 0; for (var k in mc.pending) { if (mc.pending.hasOwnProperty(k)) pend++; }
       var cn = 0, cSum = 0, cWin = 0;
